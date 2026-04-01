@@ -59,8 +59,9 @@ function getEntryStatus(mobile: string): string {
 
 /**
  * Exit status logic:
- *  - At or before shift end  → "On Time Exit"
- *  - After shift end         → "Late Exit"
+ *  - Before shift end            → "Early Exit"
+ *  - 0–15 min after shift end    → "On Time Exit"
+ *  - >15 min after shift end     → "Late Exit"
  */
 function getExitStatus(mobile: string): string {
   const shift = getEmployeeShift(mobile);
@@ -68,8 +69,9 @@ function getExitStatus(mobile: string): string {
   const now = new Date();
   const mins = now.getHours() * 60 + now.getMinutes();
   const shiftEnd = eh * 60 + em;
-  if (mins > shiftEnd) return "Late Exit";
-  return "On Time Exit";
+  if (mins < shiftEnd) return "Early Exit";
+  if (mins <= shiftEnd + 15) return "On Time Exit";
+  return "Late Exit";
 }
 
 function formatTime(t: string) {

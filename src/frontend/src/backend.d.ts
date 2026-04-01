@@ -13,7 +13,7 @@ export interface OfficeLocation {
     lng: number;
 }
 export interface AttendanceInput {
-    status: Status;
+    status: string;
     entryTimestamp: Time;
     date: string;
     name: string;
@@ -27,7 +27,7 @@ export interface Employee {
 }
 export interface AttendanceRecord {
     id: bigint;
-    status: Status;
+    status: string;
     entryTimestamp: Time;
     date: string;
     name: string;
@@ -38,10 +38,6 @@ export interface AttendanceRecord {
 export enum LogType {
     exit = "exit",
     entry = "entry"
-}
-export enum Status {
-    present = "present",
-    absent = "absent"
 }
 export interface backendInterface {
     addAttendance(input: AttendanceInput): Promise<bigint>;

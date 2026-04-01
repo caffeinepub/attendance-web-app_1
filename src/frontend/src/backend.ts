@@ -95,7 +95,7 @@ export interface OfficeLocation {
     lng: number;
 }
 export interface AttendanceInput {
-    status: Status;
+    status: string;
     entryTimestamp: Time;
     date: string;
     name: string;
@@ -109,7 +109,7 @@ export interface Employee {
 }
 export interface AttendanceRecord {
     id: bigint;
-    status: Status;
+    status: string;
     entryTimestamp: Time;
     date: string;
     name: string;
@@ -120,10 +120,6 @@ export interface AttendanceRecord {
 export enum LogType {
     exit = "exit",
     entry = "entry"
-}
-export enum Status {
-    present = "present",
-    absent = "absent"
 }
 export interface backendInterface {
     addAttendance(input: AttendanceInput): Promise<bigint>;
@@ -163,7 +159,7 @@ export interface backendInterface {
         err: string;
     }>;
 }
-import type { AttendanceInput as _AttendanceInput, AttendanceRecord as _AttendanceRecord, LogType as _LogType, OfficeLocation as _OfficeLocation, Status as _Status, Time as _Time } from "./declarations/backend.did.d.ts";
+import type { AttendanceInput as _AttendanceInput, AttendanceRecord as _AttendanceRecord, LogType as _LogType, OfficeLocation as _OfficeLocation, Time as _Time } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
     async addAttendance(arg0: AttendanceInput): Promise<bigint> {
@@ -365,15 +361,13 @@ function from_candid_AttendanceRecord_n9(_uploadFile: (file: ExternalBlob) => Pr
 function from_candid_LogType_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _LogType): LogType {
     return from_candid_variant_n14(_uploadFile, _downloadFile, value);
 }
-function from_candid_Status_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Status): Status {
-    return from_candid_variant_n12(_uploadFile, _downloadFile, value);
-}
+
 function from_candid_opt_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_OfficeLocation]): OfficeLocation | null {
     return value.length === 0 ? null : value[0];
 }
 function from_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     id: bigint;
-    status: _Status;
+    status: string;
     entryTimestamp: _Time;
     date: string;
     name: string;
@@ -382,7 +376,7 @@ function from_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uin
     mobile: string;
 }): {
     id: bigint;
-    status: Status;
+    status: string;
     entryTimestamp: Time;
     date: string;
     name: string;
@@ -392,7 +386,7 @@ function from_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uin
 } {
     return {
         id: value.id,
-        status: from_candid_Status_n11(_uploadFile, _downloadFile, value.status),
+        status: value.status,
         entryTimestamp: value.entryTimestamp,
         date: value.date,
         name: value.name,
@@ -401,13 +395,7 @@ function from_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uin
         mobile: value.mobile
     };
 }
-function from_candid_variant_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    present: null;
-} | {
-    absent: null;
-}): Status {
-    return "present" in value ? Status.present : "absent" in value ? Status.absent : value;
-}
+
 function from_candid_variant_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     exit: null;
 } | {
@@ -443,11 +431,9 @@ function to_candid_AttendanceInput_n1(_uploadFile: (file: ExternalBlob) => Promi
 function to_candid_LogType_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: LogType): _LogType {
     return to_candid_variant_n6(_uploadFile, _downloadFile, value);
 }
-function to_candid_Status_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Status): _Status {
-    return to_candid_variant_n4(_uploadFile, _downloadFile, value);
-}
+
 function to_candid_record_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    status: Status;
+    status: string;
     entryTimestamp: Time;
     date: string;
     name: string;
@@ -455,7 +441,7 @@ function to_candid_record_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8A
     exitTimestamp: Time;
     mobile: string;
 }): {
-    status: _Status;
+    status: string;
     entryTimestamp: _Time;
     date: string;
     name: string;
@@ -464,7 +450,7 @@ function to_candid_record_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8A
     mobile: string;
 } {
     return {
-        status: to_candid_Status_n3(_uploadFile, _downloadFile, value.status),
+        status: value.status,
         entryTimestamp: value.entryTimestamp,
         date: value.date,
         name: value.name,
@@ -473,17 +459,7 @@ function to_candid_record_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8A
         mobile: value.mobile
     };
 }
-function to_candid_variant_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Status): {
-    present: null;
-} | {
-    absent: null;
-} {
-    return value == Status.present ? {
-        present: null
-    } : value == Status.absent ? {
-        absent: null
-    } : value;
-}
+
 function to_candid_variant_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: LogType): {
     exit: null;
 } | {

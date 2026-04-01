@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { LogType, type Status } from "../backend";
+import { LogType } from "../backend";
 import type { Employee } from "../backend";
 import { getBackend } from "../lib/getBackend";
 import { getEmployeeShift } from "./AdminPanel";
@@ -40,15 +40,36 @@ function haversineDistance(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/**
+ * Entry status logic:
+ *  - Before shift start           → "Early Entry"
+ *  - 0–15 min after shift start   → "On Time"
+ *  - >15 min after shift start    → "Half Day"
+ */
 function getEntryStatus(mobile: string): string {
   const shift = getEmployeeShift(mobile);
   const [sh, sm] = shift.start.split(":").map(Number);
   const now = new Date();
   const mins = now.getHours() * 60 + now.getMinutes();
-  const shiftMins = sh * 60 + sm;
-  if (mins < shiftMins - 30) return "Early Morning";
-  if (mins <= shiftMins) return "On Time";
+  const shiftStart = sh * 60 + sm;
+  if (mins < shiftStart) return "Early Entry";
+  if (mins <= shiftStart + 15) return "On Time";
   return "Half Day";
+}
+
+/**
+ * Exit status logic:
+ *  - At or before shift end  → "On Time Exit"
+ *  - After shift end         → "Late Exit"
+ */
+function getExitStatus(mobile: string): string {
+  const shift = getEmployeeShift(mobile);
+  const [eh, em] = shift.end.split(":").map(Number);
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const shiftEnd = eh * 60 + em;
+  if (mins > shiftEnd) return "Late Exit";
+  return "On Time Exit";
 }
 
 function formatTime(t: string) {
@@ -169,29 +190,35 @@ export default function MarkAttendance() {
       }
 
       const ts = BigInt(Date.now());
-      const displayStatus = isWeekOff
+      const status: string = isWeekOff
         ? "Week Off"
         : logType === "exit"
-          ? "Exit"
+          ? getExitStatus(selectedMobile)
           : getEntryStatus(selectedMobile);
+
       const lt = isWeekOff
         ? LogType.entry
         : logType === "exit"
           ? LogType.exit
           : LogType.entry;
 
+      const shift = employeeShift
+        ? `${formatTime(employeeShift.start)} - ${formatTime(employeeShift.end)}`
+        : "";
+
       const input = {
         name: selectedEmployee.name,
         mobile: selectedMobile,
         date: today,
         logType: lt,
-        status: displayStatus as unknown as Status,
+        status,
         entryTimestamp: lt === LogType.entry ? ts : BigInt(0),
         exitTimestamp: lt === LogType.exit ? ts : BigInt(0),
       };
 
       await b.addAttendance(input);
 
+      // Sync to Google Sheets
       b.getAppsScriptUrl()
         .then((url) => {
           if (url) {
@@ -202,7 +229,8 @@ export default function MarkAttendance() {
                 mobile: selectedMobile,
                 date: today,
                 logType: lt,
-                status: displayStatus,
+                status,
+                shiftTiming: shift,
                 entryTimestamp: input.entryTimestamp.toString(),
                 exitTimestamp: input.exitTimestamp.toString(),
               }),
@@ -211,7 +239,7 @@ export default function MarkAttendance() {
         })
         .catch(() => {});
 
-      toast.success(`Attendance marked: ${displayStatus}`);
+      toast.success(`Attendance marked: ${status}`);
       setSelectedMobile("");
     } catch (e) {
       toast.error("Failed to mark attendance");
@@ -319,7 +347,7 @@ export default function MarkAttendance() {
             </div>
           </div>
 
-          {/* Actions - stacked on mobile, side by side on larger screens */}
+          {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3 pt-1">
             <Button
               data-ocid="mark.submit_button"

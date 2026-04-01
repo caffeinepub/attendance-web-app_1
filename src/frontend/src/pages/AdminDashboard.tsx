@@ -38,7 +38,7 @@ import { Loader2, Lock, Pencil, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { LogType } from "../backend";
-import type { AttendanceRecord, Status } from "../backend";
+import type { AttendanceRecord } from "../backend";
 import StatusBadge from "../components/StatusBadge";
 import { getBackend } from "../lib/getBackend";
 
@@ -123,7 +123,7 @@ export default function AdminDashboard({ onGoToAdmin }: Props) {
         mobile: editMobile,
         date: editDate,
         logType: lt,
-        status: editStatus as unknown as Status,
+        status: editStatus,
         entryTimestamp: editRecord.entryTimestamp,
         exitTimestamp: editRecord.exitTimestamp,
       };
@@ -173,12 +173,13 @@ export default function AdminDashboard({ onGoToAdmin }: Props) {
   });
 
   const statusOptions = [
+    "Early Entry",
     "On Time",
-    "Early Morning",
+    "On Time Exit",
     "Half Day",
+    "Late Exit",
     "Absent",
     "Week Off",
-    "Exit",
   ];
 
   if (!authed) {

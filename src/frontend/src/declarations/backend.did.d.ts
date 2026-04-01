@@ -11,7 +11,7 @@ import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
 export interface AttendanceInput {
-  'status' : Status,
+  'status' : string,
   'entryTimestamp' : Time,
   'date' : string,
   'name' : string,
@@ -21,7 +21,7 @@ export interface AttendanceInput {
 }
 export interface AttendanceRecord {
   'id' : bigint,
-  'status' : Status,
+  'status' : string,
   'entryTimestamp' : Time,
   'date' : string,
   'name' : string,
@@ -33,8 +33,6 @@ export interface Employee { 'name' : string, 'mobile' : string }
 export type LogType = { 'exit' : null } |
   { 'entry' : null };
 export interface OfficeLocation { 'lat' : number, 'lng' : number }
-export type Status = { 'present' : null } |
-  { 'absent' : null };
 export type Time = bigint;
 export interface _SERVICE {
   'addAttendance' : ActorMethod<[AttendanceInput], bigint>,

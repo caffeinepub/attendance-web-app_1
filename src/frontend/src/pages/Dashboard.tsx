@@ -222,7 +222,7 @@ export default function Dashboard() {
     (r) => (r.status as string) === "Half Day",
   ).length;
   const weekOffCount = todayRecords.filter(
-    (r) => (r.status as string) === "Week Off",
+    (r) => (r.status as string) === "weekOff",
   ).length;
   const absentEmployees = isAfter4PM
     ? employees.filter((e) => !presentMobiles.has(e.mobile))

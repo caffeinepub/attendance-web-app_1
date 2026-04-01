@@ -322,7 +322,7 @@ export default function AdminPanel() {
   const scriptCode = `function doPost(e) {
   var sheet = SpreadsheetApp.openById('YOUR_SHEET_ID').getActiveSheet();
   var data = JSON.parse(e.postData.contents);
-  sheet.appendRow([data.name, data.mobile, data.date, data.logType, data.status, data.entryTimestamp, data.exitTimestamp]);
+  sheet.appendRow([data.name, data.mobile, data.date, data.logType, data.status, data.shiftTiming, data.entryTimestamp, data.exitTimestamp]);
   return ContentService.createTextOutput(JSON.stringify({result: 'success'})).setMimeType(ContentService.MimeType.JSON);
 }`;
 

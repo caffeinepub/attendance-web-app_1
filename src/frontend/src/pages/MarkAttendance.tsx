@@ -319,8 +319,8 @@ export default function MarkAttendance() {
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-1">
+          {/* Actions - stacked on mobile, side by side on larger screens */}
+          <div className="flex flex-col sm:flex-row gap-3 pt-1">
             <Button
               data-ocid="mark.submit_button"
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
@@ -337,7 +337,7 @@ export default function MarkAttendance() {
               variant="outline"
               onClick={() => submitAttendance(true)}
               disabled={loading || !selectedMobile}
-              className="gap-2"
+              className="gap-2 sm:shrink-0"
             >
               <CalendarX2 className="w-4 h-4" />
               Mark Week Off

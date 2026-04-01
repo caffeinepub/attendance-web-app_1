@@ -90,8 +90,14 @@ function SidebarContent({
             key={item.id}
             data-ocid={`nav.${item.id}.link`}
             onClick={() => {
-              onNavigate(item.id);
-              onClose?.();
+              if (onClose) {
+                // Close drawer first, then navigate after a short delay
+                // to prevent ghost-click on the newly rendered page
+                onClose();
+                setTimeout(() => onNavigate(item.id), 250);
+              } else {
+                onNavigate(item.id);
+              }
             }}
             className={cn(
               "flex items-center gap-3 w-full px-3 py-2.5 rounded-md text-sm font-medium transition-all",

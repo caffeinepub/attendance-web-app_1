@@ -239,6 +239,7 @@ export default function MarkAttendance() {
           if (url) {
             fetch(url, {
               method: "POST",
+              mode: "no-cors" as RequestMode,
               body: JSON.stringify({
                 name: selectedEmployee.name,
                 mobile: selectedMobile,
@@ -248,9 +249,11 @@ export default function MarkAttendance() {
                 shiftTiming: shift,
                 entryTimestamp: input.entryTimestamp.toString(),
                 exitTimestamp: input.exitTimestamp.toString(),
-                locationLat: input.locationLat,
-                locationLng: input.locationLng,
-                locationType: input.locationType,
+                location: isWeekOff
+                  ? "Week Off"
+                  : input.locationType
+                    ? `${input.locationType} (${input.locationLat.toFixed(6)}, ${input.locationLng.toFixed(6)})`
+                    : "",
               }),
             }).catch(() => {});
           }

@@ -1,10 +1,10 @@
-import Map "mo:core/Map";
 import Array "mo:base/Array";
 import Float "mo:base/Float";
 import Order "mo:base/Order";
 import Text "mo:base/Text";
 import Nat "mo:base/Nat";
 import Time "mo:base/Time";
+import Map "mo:core/Map";
 
 actor {
   public type Employee = {
@@ -72,13 +72,13 @@ actor {
     locationType : Text;
   };
 
-  // ── Legacy stub variables ──
-  // These MUST remain to satisfy stable-variable compatibility (M0169).
-  // They are never read from or written to; all live data is in stableAttendanceV2 / stableEmployees.
-  // DO NOT call any methods on these -- only Map.empty() is safe.
-  let attendanceRecords = Map.empty<Nat, OldAttendanceRecord>();
-  let employees = Map.empty<Text, Employee>();
-  var attendanceMap = Map.empty<Nat, AttendanceRecordV1>();
+  // ── Legacy stub stable vars ──
+  // These satisfy M0169 upgrade compatibility for vars that existed in older
+  // deployed versions that used mo:core/Map. They are never read or written.
+  // Map.Map<K,V> is the correct type match for the on-chain serialized state.
+  stable var attendanceRecords : Map.Map<Nat, OldAttendanceRecord> = Map.empty();
+  stable var employees : Map.Map<Text, Employee> = Map.empty();
+  stable var attendanceMap : Map.Map<Nat, AttendanceRecordV1> = Map.empty();
 
   // ── Stable storage ──
   stable var stableMigrationDone : Bool = false;
@@ -174,6 +174,19 @@ actor {
       return #err("Employee already exists");
     };
     empList := Array.append(empList, [emp]);
+    #ok();
+  };
+
+  public shared func updateEmployee(mobile : Text, newName : Text) : async { #ok : (); #err : Text } {
+    let exists = Array.find(empList, func(e : Employee) : Bool {
+      e.mobile == mobile;
+    });
+    if (exists == null) {
+      return #err("Employee not found");
+    };
+    empList := Array.map(empList, func(e : Employee) : Employee {
+      if (e.mobile == mobile) { { name = newName; mobile } } else { e };
+    });
     #ok();
   };
 

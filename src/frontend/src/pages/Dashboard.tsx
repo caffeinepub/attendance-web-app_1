@@ -1,24 +1,5 @@
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -31,16 +12,12 @@ import {
   Calendar,
   Clock,
   Loader2,
-  Pencil,
   RefreshCw,
-  Trash2,
   UserCheck,
   UserX,
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
-import { LogType } from "../backend";
 import type { AttendanceRecord, Employee } from "../backend";
 import StatusBadge from "../components/StatusBadge";
 import { getBackend } from "../lib/getBackend";
@@ -99,15 +76,11 @@ function LogsPanel({
   rows,
   loading,
   dot,
-  onEdit,
-  onDelete,
 }: {
   title: string;
   rows: DisplayRow[];
   loading: boolean;
   dot?: string;
-  onEdit: (r: DisplayRow) => void;
-  onDelete: (id: bigint) => void;
 }) {
   return (
     <Card>
@@ -144,7 +117,6 @@ function LogsPanel({
                   <TableHead className="font-semibold">Time</TableHead>
                   <TableHead className="font-semibold">Work Location</TableHead>
                   <TableHead className="font-semibold">Geo Location</TableHead>
-                  <TableHead className="font-semibold">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -172,29 +144,6 @@ function LogsPanel({
                     <TableCell className="text-sm text-muted-foreground font-mono">
                       <ReverseGeoCell lat={r.locationLat} lng={r.locationLng} />
                     </TableCell>
-                    <TableCell>
-                      {!r.isAbsent && (
-                        <div className="flex gap-1">
-                          <Button
-                            data-ocid={`dashboard.table.edit_button.${i + 1}`}
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onEdit(r)}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            data-ocid={`dashboard.table.delete_button.${i + 1}`}
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => onDelete(r.id)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -210,13 +159,6 @@ export default function Dashboard() {
   const [records, setRecords] = useState<AttendanceRecordExt[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(false);
-
-  const [editRecord, setEditRecord] = useState<DisplayRow | null>(null);
-  const [editTimestamp, setEditTimestamp] = useState("");
-  const [editSaving, setEditSaving] = useState(false);
-
-  const [deleteId, setDeleteId] = useState<bigint | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -236,82 +178,6 @@ export default function Dashboard() {
   useEffect(() => {
     load();
   }, [load]);
-
-  function openEdit(r: DisplayRow) {
-    setEditRecord(r);
-    const ts =
-      (r.logType as string) === "exit" ? r.exitTimestamp : r.entryTimestamp;
-    const val =
-      ts && ts !== BigInt(0)
-        ? new Date(Number(ts)).toISOString().slice(0, 16)
-        : "";
-    setEditTimestamp(val);
-  }
-
-  async function saveEdit() {
-    if (!editRecord) return;
-    setEditSaving(true);
-    try {
-      const b = await getBackend();
-      const lt =
-        (editRecord.logType as string) === "exit"
-          ? LogType.exit
-          : LogType.entry;
-      const newTs = editTimestamp
-        ? BigInt(new Date(editTimestamp).getTime())
-        : BigInt(0);
-      const input = {
-        name: editRecord.name,
-        mobile: editRecord.mobile,
-        date: editRecord.date,
-        logType: lt,
-        status: editRecord.status,
-        entryTimestamp:
-          (editRecord.logType as string) === "exit"
-            ? editRecord.entryTimestamp
-            : newTs,
-        exitTimestamp:
-          (editRecord.logType as string) === "exit"
-            ? newTs
-            : editRecord.exitTimestamp,
-        locationLat: editRecord.locationLat ?? 0,
-        locationLng: editRecord.locationLng ?? 0,
-        locationType: editRecord.locationType ?? "",
-      };
-      const res = await b.updateAttendance(editRecord.id, input);
-      if ((res as any).__kind__ === "err") {
-        toast.error((res as any).err);
-        return;
-      }
-      toast.success("Record updated");
-      setEditRecord(null);
-      load();
-    } catch {
-      toast.error("Failed to update");
-    } finally {
-      setEditSaving(false);
-    }
-  }
-
-  async function confirmDelete() {
-    if (deleteId === null) return;
-    setDeleting(true);
-    try {
-      const b = await getBackend();
-      const res = await b.deleteAttendance(deleteId);
-      if ((res as any).__kind__ === "err") {
-        toast.error((res as any).err);
-        return;
-      }
-      toast.success("Record deleted");
-      setDeleteId(null);
-      load();
-    } catch {
-      toast.error("Failed to delete");
-    } finally {
-      setDeleting(false);
-    }
-  }
 
   const today = getDateStr(0);
   const yesterday = getDateStr(-1);
@@ -454,107 +320,13 @@ export default function Dashboard() {
           rows={todayRows}
           loading={loading}
           dot="bg-green-500"
-          onEdit={openEdit}
-          onDelete={(id) => setDeleteId(id)}
         />
         <LogsPanel
           title="Yesterday's Logs"
           rows={yesterdayRecords.map((r) => ({ ...r, isAbsent: false }))}
           loading={loading}
-          onEdit={openEdit}
-          onDelete={(id) => setDeleteId(id)}
         />
       </div>
-
-      {/* Edit Dialog */}
-      <Dialog
-        open={!!editRecord}
-        onOpenChange={(open) => !open && setEditRecord(null)}
-      >
-        <DialogContent data-ocid="dashboard.edit.dialog">
-          <DialogHeader>
-            <DialogTitle>Edit Timestamp</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <p className="text-sm text-muted-foreground">
-              Editing{" "}
-              <span className="font-medium text-foreground">
-                {editRecord?.name}
-              </span>{" "}
-              —{" "}
-              <span className="capitalize">
-                {editRecord?.logType as string}
-              </span>
-            </p>
-            <div className="space-y-1.5">
-              <Label>
-                {(editRecord?.logType as string) === "exit"
-                  ? "Exit Time"
-                  : "Entry Time"}
-              </Label>
-              <Input
-                data-ocid="dashboard.edit.input"
-                type="datetime-local"
-                value={editTimestamp}
-                onChange={(e) => setEditTimestamp(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              data-ocid="dashboard.edit.cancel_button"
-              onClick={() => setEditRecord(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              data-ocid="dashboard.edit.save_button"
-              onClick={saveEdit}
-              disabled={editSaving}
-            >
-              {editSaving ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : null}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirm Dialog */}
-      <AlertDialog
-        open={deleteId !== null}
-        onOpenChange={(open) => !open && setDeleteId(null)}
-      >
-        <AlertDialogContent data-ocid="dashboard.delete.dialog">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Record</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              data-ocid="dashboard.delete.cancel_button"
-              onClick={() => setDeleteId(null)}
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              data-ocid="dashboard.delete.confirm_button"
-              onClick={confirmDelete}
-              disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleting ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : null}
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

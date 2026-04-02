@@ -1,7 +1,31 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -18,6 +42,7 @@ import {
   Loader2,
   Lock,
   MapPin,
+  Pencil,
   Plus,
   Save,
   Trash2,
@@ -25,6 +50,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { LogType } from "../backend";
 import type { AttendanceRecord, Employee } from "../backend";
 import StatusBadge from "../components/StatusBadge";
 import { getBackend } from "../lib/getBackend";
@@ -37,8 +63,8 @@ export function getEmployeeShift(mobile: string): {
   end: string;
 } {
   return {
-    start: localStorage.getItem(`shift_start_${mobile}`) || "10:00",
-    end: localStorage.getItem(`shift_end_${mobile}`) || "18:00",
+    start: localStorage.getItem(`shift_start_${mobile}`) || "10:30",
+    end: localStorage.getItem(`shift_end_${mobile}`) || "20:00",
   };
 }
 
@@ -56,6 +82,16 @@ function formatTs(ts: bigint): string {
   return `${dd}-${mm}-${yyyy} ${hh}:${minutes} ${ampm}`;
 }
 
+const LOG_STATUS_OPTIONS = [
+  "Early Entry",
+  "On Time Entry",
+  "On Time Exit",
+  "Half Day",
+  "Late Exit",
+  "Absent",
+  "Week Off",
+];
+
 export default function AdminPanel() {
   const [authed, setAuthed] = useState(
     () => sessionStorage.getItem(SESSION_KEY) === "1",
@@ -67,8 +103,8 @@ export default function AdminPanel() {
   const [empLoading, setEmpLoading] = useState(false);
   const [newName, setNewName] = useState("");
   const [newMobile, setNewMobile] = useState("");
-  const [newShiftStart, setNewShiftStart] = useState("10:00");
-  const [newShiftEnd, setNewShiftEnd] = useState("18:00");
+  const [newShiftStart, setNewShiftStart] = useState("10:30");
+  const [newShiftEnd, setNewShiftEnd] = useState("20:00");
   const [shiftEdits, setShiftEdits] = useState<
     Record<string, { start: string; end: string }>
   >({});
@@ -84,6 +120,21 @@ export default function AdminPanel() {
 
   const [logs, setLogs] = useState<AttendanceRecord[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+
+  // Edit log state
+  const [editLogRecord, setEditLogRecord] = useState<AttendanceRecord | null>(
+    null,
+  );
+  const [editLogName, setEditLogName] = useState("");
+  const [editLogMobile, setEditLogMobile] = useState("");
+  const [editLogDate, setEditLogDate] = useState("");
+  const [editLogType, setEditLogType] = useState<"entry" | "exit">("entry");
+  const [editLogStatus, setEditLogStatus] = useState("");
+  const [editLogSaving, setEditLogSaving] = useState(false);
+
+  // Delete log state
+  const [deleteLogId, setDeleteLogId] = useState<bigint | null>(null);
+  const [deletingLog, setDeletingLog] = useState(false);
 
   useEffect(() => {
     if (!authed) return;
@@ -145,7 +196,7 @@ export default function AdminPanel() {
     setShiftEdits((prev) => ({
       ...prev,
       [mobile]: {
-        ...(prev[mobile] || { start: "10:00", end: "18:00" }),
+        ...(prev[mobile] || { start: "10:30", end: "20:00" }),
         [field]: value,
       },
     }));
@@ -177,8 +228,8 @@ export default function AdminPanel() {
       }));
       setNewName("");
       setNewMobile("");
-      setNewShiftStart("10:00");
-      setNewShiftEnd("18:00");
+      setNewShiftStart("10:30");
+      setNewShiftEnd("20:00");
       toast.success("Employee added");
     } catch {
       toast.error("Failed to add employee");
@@ -279,6 +330,68 @@ export default function AdminPanel() {
       toast.error("Failed to load logs");
     } finally {
       setLogsLoading(false);
+    }
+  }
+
+  function openEditLog(r: AttendanceRecord) {
+    setEditLogRecord(r);
+    setEditLogName(r.name);
+    setEditLogMobile(r.mobile);
+    setEditLogDate(r.date);
+    setEditLogType(r.logType as string as "entry" | "exit");
+    setEditLogStatus(r.status as string);
+  }
+
+  async function saveEditLog() {
+    if (!editLogRecord) return;
+    setEditLogSaving(true);
+    try {
+      const b = await getBackend();
+      const lt = editLogType === "exit" ? LogType.exit : LogType.entry;
+      const input = {
+        name: editLogName,
+        mobile: editLogMobile,
+        date: editLogDate,
+        logType: lt,
+        status: editLogStatus,
+        entryTimestamp: editLogRecord.entryTimestamp,
+        exitTimestamp: editLogRecord.exitTimestamp,
+        locationLat: (editLogRecord as any).locationLat ?? 0,
+        locationLng: (editLogRecord as any).locationLng ?? 0,
+        locationType: (editLogRecord as any).locationType ?? "",
+      };
+      const res = await b.updateAttendance(editLogRecord.id, input);
+      if ((res as any).__kind__ === "err") {
+        toast.error((res as any).err);
+        return;
+      }
+      toast.success("Record updated");
+      setEditLogRecord(null);
+      loadLogs();
+    } catch {
+      toast.error("Failed to update");
+    } finally {
+      setEditLogSaving(false);
+    }
+  }
+
+  async function confirmDeleteLog() {
+    if (deleteLogId === null) return;
+    setDeletingLog(true);
+    try {
+      const b = await getBackend();
+      const res = await b.deleteAttendance(deleteLogId);
+      if ((res as any).__kind__ === "err") {
+        toast.error((res as any).err);
+        return;
+      }
+      toast.success("Record deleted");
+      setDeleteLogId(null);
+      loadLogs();
+    } catch {
+      toast.error("Failed to delete");
+    } finally {
+      setDeletingLog(false);
     }
   }
 
@@ -456,7 +569,7 @@ export default function AdminPanel() {
                               <Input
                                 type="time"
                                 className="w-28 h-8 text-sm"
-                                value={shiftEdits[emp.mobile]?.start || "10:00"}
+                                value={shiftEdits[emp.mobile]?.start || "10:30"}
                                 onChange={(e) =>
                                   updateShiftEdit(
                                     emp.mobile,
@@ -471,7 +584,7 @@ export default function AdminPanel() {
                               <Input
                                 type="time"
                                 className="w-28 h-8 text-sm"
-                                value={shiftEdits[emp.mobile]?.end || "18:00"}
+                                value={shiftEdits[emp.mobile]?.end || "20:00"}
                                 onChange={(e) =>
                                   updateShiftEdit(
                                     emp.mobile,
@@ -604,11 +717,17 @@ export default function AdminPanel() {
             </div>
             <CardContent className="pt-4 px-0">
               {logsLoading ? (
-                <div className="flex justify-center py-10">
+                <div
+                  data-ocid="admin.logs.loading_state"
+                  className="flex justify-center py-10"
+                >
                   <Loader2 className="w-6 h-6 animate-spin text-primary" />
                 </div>
               ) : logs.length === 0 ? (
-                <div className="text-center text-muted-foreground py-10 text-sm">
+                <div
+                  data-ocid="admin.logs.empty_state"
+                  className="text-center text-muted-foreground py-10 text-sm"
+                >
                   No logs yet
                 </div>
               ) : (
@@ -622,6 +741,7 @@ export default function AdminPanel() {
                         <TableHead>Log</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Time</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -648,6 +768,30 @@ export default function AdminPanel() {
                             {(r.logType as string) === "exit"
                               ? formatTs(r.exitTimestamp)
                               : formatTs(r.entryTimestamp)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                data-ocid={`admin.logs.edit_button.${i + 1}`}
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-blue-600 hover:text-blue-600 hover:bg-blue-50"
+                                onClick={() => openEditLog(r)}
+                                title="Edit record"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                data-ocid={`admin.logs.delete_button.${i + 1}`}
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => setDeleteLogId(r.id)}
+                                title="Delete record"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -778,6 +922,132 @@ export default function AdminPanel() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Log Dialog */}
+      <Dialog
+        open={!!editLogRecord}
+        onOpenChange={(open) => !open && setEditLogRecord(null)}
+      >
+        <DialogContent data-ocid="admin.logs.edit.dialog">
+          <DialogHeader>
+            <DialogTitle>Edit Log Record</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Name</Label>
+                <Input
+                  data-ocid="admin.logs.edit.name.input"
+                  value={editLogName}
+                  onChange={(e) => setEditLogName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Mobile</Label>
+                <Input
+                  data-ocid="admin.logs.edit.mobile.input"
+                  value={editLogMobile}
+                  onChange={(e) => setEditLogMobile(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Date</Label>
+              <Input
+                data-ocid="admin.logs.edit.date.input"
+                type="date"
+                value={editLogDate}
+                onChange={(e) => setEditLogDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Log Type</Label>
+              <Select
+                value={editLogType}
+                onValueChange={(v) => setEditLogType(v as "entry" | "exit")}
+              >
+                <SelectTrigger data-ocid="admin.logs.edit.logtype.select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="entry">Entry</SelectItem>
+                  <SelectItem value="exit">Exit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select value={editLogStatus} onValueChange={setEditLogStatus}>
+                <SelectTrigger data-ocid="admin.logs.edit.status.select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOG_STATUS_OPTIONS.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              data-ocid="admin.logs.edit.cancel_button"
+              onClick={() => setEditLogRecord(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              data-ocid="admin.logs.edit.save_button"
+              onClick={saveEditLog}
+              disabled={editLogSaving}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {editLogSaving ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Log AlertDialog */}
+      <AlertDialog
+        open={deleteLogId !== null}
+        onOpenChange={(open) => !open && setDeleteLogId(null)}
+      >
+        <AlertDialogContent data-ocid="admin.logs.delete.dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Log Record</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The attendance record will be
+              permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              data-ocid="admin.logs.delete.cancel_button"
+              onClick={() => setDeleteLogId(null)}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-ocid="admin.logs.delete.confirm_button"
+              onClick={confirmDeleteLog}
+              disabled={deletingLog}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingLog ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

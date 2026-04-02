@@ -21,7 +21,21 @@ import { toast } from "sonner";
 import { LogType } from "../backend";
 import type { AttendanceInput, Employee } from "../backend";
 import { getBackend } from "../lib/getBackend";
+import { reverseGeocode } from "../lib/reverseGeocode";
 import { getEmployeeShift } from "./AdminPanel";
+
+function fmtTsStr(ts: bigint): string {
+  if (!ts || ts === BigInt(0)) return "";
+  const d = new Date(Number(ts));
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  let h = d.getHours();
+  const min = String(d.getMinutes()).padStart(2, "0");
+  const ap = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${dd}-${mm}-${yyyy} ${String(h).padStart(2, "0")}:${min} ${ap}`;
+}
 
 function haversineDistance(
   lat1: number,
@@ -235,8 +249,23 @@ export default function MarkAttendance() {
 
       // Sync to Google Sheets (fire-and-forget)
       b.getAppsScriptUrl()
-        .then((url) => {
+        .then(async (url) => {
           if (url) {
+            const workLocation = isWeekOff
+              ? "Week Off"
+              : input.locationType || "";
+            let geoLocation = "";
+            if (
+              !isWeekOff &&
+              (input.locationLat !== 0 || input.locationLng !== 0)
+            ) {
+              geoLocation = await reverseGeocode(
+                input.locationLat,
+                input.locationLng,
+              );
+            } else if (!isWeekOff) {
+              geoLocation = "0.000000, 0.000000";
+            }
             fetch(url, {
               method: "POST",
               mode: "no-cors" as RequestMode,
@@ -247,13 +276,10 @@ export default function MarkAttendance() {
                 logType: String(lt),
                 status,
                 shiftTiming: shift,
-                entryTimestamp: input.entryTimestamp.toString(),
-                exitTimestamp: input.exitTimestamp.toString(),
-                location: isWeekOff
-                  ? "Week Off"
-                  : input.locationType
-                    ? `${input.locationType} (${input.locationLat.toFixed(6)}, ${input.locationLng.toFixed(6)})`
-                    : "",
+                entryTimestamp: fmtTsStr(input.entryTimestamp),
+                exitTimestamp: fmtTsStr(input.exitTimestamp),
+                workLocation,
+                geoLocation,
               }),
             }).catch(() => {});
           }

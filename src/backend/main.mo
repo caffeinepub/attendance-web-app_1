@@ -72,10 +72,10 @@ actor {
     locationType : Text;
   };
 
-  // ── Legacy variable declarations ──
-  // These consume old stable storage from previous versions so the
-  // upgrade checker does not reject the deployment with M0169.
-  // They are never written to; all live data is in stableAttendanceV2 / stableEmployees.
+  // ── Legacy stub variables ──
+  // These MUST remain to satisfy stable-variable compatibility (M0169).
+  // They are never read from or written to; all live data is in stableAttendanceV2 / stableEmployees.
+  // DO NOT call any methods on these -- only Map.empty() is safe.
   let attendanceRecords = Map.empty<Nat, OldAttendanceRecord>();
   let employees = Map.empty<Text, Employee>();
   var attendanceMap = Map.empty<Nat, AttendanceRecordV1>();
@@ -102,14 +102,10 @@ actor {
   };
 
   system func postupgrade() {
-    // stableMigrationDone is already true on all live canisters;
-    // this block is kept only for correctness on brand-new deployments.
     if (not stableMigrationDone) {
-      // Legacy Maps are always empty on new deployments — nothing to migrate.
       stableMigrationDone := true;
     };
 
-    // One-time promotion of V1 (8-field) records to V2 (11-field)
     if (not v2MigrationDone) {
       for (r in stableAttendance.vals()) {
         let v2 : AttendanceRecord = {
@@ -133,7 +129,6 @@ actor {
       v2MigrationDone := true;
     };
 
-    // Restore in-memory lists from stable arrays
     empList := stableEmployees;
     workList := stableAttendanceV2;
     for (r in workList.vals()) {

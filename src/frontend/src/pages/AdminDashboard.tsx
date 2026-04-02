@@ -41,6 +41,7 @@ import { LogType } from "../backend";
 import type { AttendanceRecord } from "../backend";
 import StatusBadge from "../components/StatusBadge";
 import { getBackend } from "../lib/getBackend";
+import { reverseGeocode } from "../lib/reverseGeocode";
 
 interface AttendanceRecordExt extends AttendanceRecord {
   locationLat: number;
@@ -50,7 +51,36 @@ interface AttendanceRecordExt extends AttendanceRecord {
 
 function formatTs(ts: bigint): string {
   if (!ts || ts === BigInt(0)) return "—";
-  return new Date(Number(ts)).toLocaleString("en-IN");
+  const d = new Date(Number(ts));
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
+  const hh = String(hours).padStart(2, "0");
+  return `${dd}-${mm}-${yyyy} ${hh}:${minutes} ${ampm}`;
+}
+
+function ReverseGeoCell({ lat, lng }: { lat: number; lng: number }) {
+  const [label, setLabel] = useState<string>(() =>
+    lat === 0 && lng === 0 ? "" : `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+  );
+  useEffect(() => {
+    if (lat === 0 && lng === 0) {
+      setLabel("");
+      return;
+    }
+    let cancelled = false;
+    reverseGeocode(lat, lng).then((v) => {
+      if (!cancelled) setLabel(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [lat, lng]);
+  return <span>{label || "—"}</span>;
 }
 
 export default function AdminDashboard() {
@@ -237,7 +267,12 @@ export default function AdminDashboard() {
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold">Entry Time</TableHead>
                     <TableHead className="font-semibold">Exit Time</TableHead>
-                    <TableHead className="font-semibold">Location</TableHead>
+                    <TableHead className="font-semibold">
+                      Work Location
+                    </TableHead>
+                    <TableHead className="font-semibold">
+                      Geo Location
+                    </TableHead>
                     <TableHead className="font-semibold">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -266,19 +301,13 @@ export default function AdminDashboard() {
                         {formatTs(r.exitTimestamp)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {r.locationType ? (
-                          <span>
-                            {r.locationType}
-                            {r.locationLat !== 0 && (
-                              <span className="block text-xs opacity-70">
-                                {r.locationLat.toFixed(4)},{" "}
-                                {r.locationLng.toFixed(4)}
-                              </span>
-                            )}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
+                        {r.locationType || "—"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground font-mono">
+                        <ReverseGeoCell
+                          lat={r.locationLat}
+                          lng={r.locationLng}
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">

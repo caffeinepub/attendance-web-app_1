@@ -18,6 +18,9 @@ export interface AttendanceInput {
   'logType' : LogType,
   'exitTimestamp' : Time,
   'mobile' : string,
+  'locationLat' : number,
+  'locationLng' : number,
+  'locationType' : string,
 }
 export interface AttendanceRecord {
   'id' : bigint,
@@ -28,6 +31,9 @@ export interface AttendanceRecord {
   'logType' : LogType,
   'exitTimestamp' : Time,
   'mobile' : string,
+  'locationLat' : number,
+  'locationLng' : number,
+  'locationType' : string,
 }
 export interface Employee { 'name' : string, 'mobile' : string }
 export type LogType = { 'exit' : null } |

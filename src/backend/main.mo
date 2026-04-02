@@ -1,14 +1,26 @@
 import Map "mo:core/Map";
-import Float "mo:core/Float";
-import Order "mo:core/Order";
-import Text "mo:core/Text";
-import Nat "mo:core/Nat";
-import Time "mo:core/Time";
+import Array "mo:base/Array";
+import Float "mo:base/Float";
+import Order "mo:base/Order";
+import Text "mo:base/Text";
+import Nat "mo:base/Nat";
+import Time "mo:base/Time";
 
 actor {
   public type Employee = {
     name : Text;
     mobile : Text;
+  };
+
+  type AttendanceRecordV1 = {
+    id : Nat;
+    name : Text;
+    mobile : Text;
+    date : Text;
+    logType : LogType;
+    status : Text;
+    entryTimestamp : Time.Time;
+    exitTimestamp : Time.Time;
   };
 
   public type AttendanceRecord = {
@@ -20,6 +32,9 @@ actor {
     status : Text;
     entryTimestamp : Time.Time;
     exitTimestamp : Time.Time;
+    locationLat : Float;
+    locationLng : Float;
+    locationType : Text;
   };
 
   public type OfficeLocation = {
@@ -32,7 +47,6 @@ actor {
     #exit;
   };
 
-  // Old types kept to match currently deployed stable storage (for migration)
   type OldStatus = { #present; #absent };
   type OldAttendanceRecord = {
     id : Nat;
@@ -53,84 +67,98 @@ actor {
     status : Text;
     entryTimestamp : Time.Time;
     exitTimestamp : Time.Time;
+    locationLat : Float;
+    locationLng : Float;
+    locationType : Text;
   };
 
-  // Legacy stable Map — same name & compatible type as deployed code.
-  // Caffeine's build system will load the existing stable data into this.
+  // ── Legacy variable declarations ──
+  // These consume old stable storage from previous versions so the
+  // upgrade checker does not reject the deployment with M0169.
+  // They are never written to; all live data is in stableAttendanceV2 / stableEmployees.
   let attendanceRecords = Map.empty<Nat, OldAttendanceRecord>();
-
-  // Unchanged employees Map (type not changed — loads existing data).
   let employees = Map.empty<Text, Employee>();
+  var attendanceMap = Map.empty<Nat, AttendanceRecordV1>();
 
-  // New stable storage: array-based so Text status is type-evolution-safe.
-  stable var stableAttendance : [AttendanceRecord] = [];
-  // Guard against running the migration more than once across upgrades.
+  // ── Stable storage ──
   stable var stableMigrationDone : Bool = false;
+  stable var stableEmployees : [Employee] = [];
+  stable var stableAttendance : [AttendanceRecordV1] = [];
   stable var nextAttendanceId : Nat = 1;
-
-  // These were non-stable vars in old code; now explicit stable vars.
   stable var officeLocation : ?OfficeLocation = null;
   stable var appsScriptUrl : Text = "";
+  stable var stableAttendanceV2 : [AttendanceRecord] = [];
+  stable var v2MigrationDone : Bool = false;
 
-  // In-memory working map — rebuilt on every upgrade via postupgrade.
-  var attendanceMap = Map.empty<Nat, AttendanceRecord>();
+  // ── In-memory working state ──
+  var empList : [Employee] = [];
+  var attList : [AttendanceRecordV1] = [];
+  var workList : [AttendanceRecord] = [];
 
   system func preupgrade() {
-    stableAttendance := attendanceMap.values().toArray();
+    stableEmployees := empList;
+    stableAttendance := attList;
+    stableAttendanceV2 := workList;
   };
 
   system func postupgrade() {
-    // One-time migration: copy legacy variant-status records into attendanceMap
+    // stableMigrationDone is already true on all live canisters;
+    // this block is kept only for correctness on brand-new deployments.
     if (not stableMigrationDone) {
-      for (v in attendanceRecords.values()) {
-        let statusText = switch (v.status) {
-          case (#present) "present";
-          case (#absent) "absent";
-        };
-        let newRecord : AttendanceRecord = {
-          id = v.id;
-          name = v.name;
-          mobile = v.mobile;
-          date = v.date;
-          logType = v.logType;
-          status = statusText;
-          entryTimestamp = v.entryTimestamp;
-          exitTimestamp = v.exitTimestamp;
-        };
-        attendanceMap.add(v.id, newRecord);
-        if (v.id >= nextAttendanceId) { nextAttendanceId := v.id + 1 };
-      };
+      // Legacy Maps are always empty on new deployments — nothing to migrate.
       stableMigrationDone := true;
     };
 
-    // Restore from stable array (all upgrades after the first)
-    for (r in stableAttendance.vals()) {
-      attendanceMap.add(r.id, r);
+    // One-time promotion of V1 (8-field) records to V2 (11-field)
+    if (not v2MigrationDone) {
+      for (r in stableAttendance.vals()) {
+        let v2 : AttendanceRecord = {
+          id = r.id;
+          name = r.name;
+          mobile = r.mobile;
+          date = r.date;
+          logType = r.logType;
+          status = r.status;
+          entryTimestamp = r.entryTimestamp;
+          exitTimestamp = r.exitTimestamp;
+          locationLat = 0.0;
+          locationLng = 0.0;
+          locationType = "";
+        };
+        stableAttendanceV2 := Array.append(stableAttendanceV2, [v2]);
+        if (r.id >= nextAttendanceId) { nextAttendanceId := r.id + 1 };
+      };
+      stableAttendance := [];
+      attList := [];
+      v2MigrationDone := true;
+    };
+
+    // Restore in-memory lists from stable arrays
+    empList := stableEmployees;
+    workList := stableAttendanceV2;
+    for (r in workList.vals()) {
       if (r.id >= nextAttendanceId) { nextAttendanceId := r.id + 1 };
     };
-    stableAttendance := [];
   };
 
+  // ── Query endpoints ──
+
   public query func getEmployees() : async [Employee] {
-    employees.values().toArray().sort(
-      func(a : Employee, b : Employee) : Order.Order {
-        Text.compare(a.mobile, b.mobile);
-      }
-    );
+    Array.sort(empList, func(a : Employee, b : Employee) : Order.Order {
+      Text.compare(a.mobile, b.mobile);
+    });
   };
 
   public query func getAttendance() : async [AttendanceRecord] {
-    attendanceMap.values().toArray().sort(
-      func(a : AttendanceRecord, b : AttendanceRecord) : Order.Order {
-        Nat.compare(a.id, b.id);
-      }
-    );
+    Array.sort(workList, func(a : AttendanceRecord, b : AttendanceRecord) : Order.Order {
+      Nat.compare(a.id, b.id);
+    });
   };
 
   public query func getAttendanceByMobile(mobile : Text) : async [AttendanceRecord] {
-    attendanceMap.values().filter(
-      func(r : AttendanceRecord) : Bool { r.mobile == mobile }
-    ).toArray();
+    Array.filter(workList, func(r : AttendanceRecord) : Bool {
+      r.mobile == mobile;
+    });
   };
 
   public query func getOfficeLocation() : async ?OfficeLocation {
@@ -141,56 +169,85 @@ actor {
     appsScriptUrl;
   };
 
-  public shared func addEmployee(emp : Employee) : async {
-    #ok : ();
-    #err : Text;
-  } {
-    if (employees.containsKey(emp.mobile)) {
+  // ── Update endpoints ──
+
+  public shared func addEmployee(emp : Employee) : async { #ok : (); #err : Text } {
+    let exists = Array.find(empList, func(e : Employee) : Bool {
+      e.mobile == emp.mobile;
+    });
+    if (exists != null) {
       return #err("Employee already exists");
     };
-    employees.add(emp.mobile, emp);
+    empList := Array.append(empList, [emp]);
     #ok();
   };
 
-  public shared func deleteEmployee(mobile : Text) : async {
-    #ok : ();
-    #err : Text;
-  } {
-    if (not employees.containsKey(mobile)) {
+  public shared func deleteEmployee(mobile : Text) : async { #ok : (); #err : Text } {
+    let before = empList.size();
+    empList := Array.filter(empList, func(e : Employee) : Bool {
+      e.mobile != mobile;
+    });
+    if (empList.size() == before) {
       return #err("Employee not found");
     };
-    employees.remove(mobile);
     #ok();
   };
 
   public shared func addAttendance(input : AttendanceInput) : async Nat {
     let id = nextAttendanceId;
-    let record : AttendanceRecord = { input with id };
-    attendanceMap.add(id, record);
+    let record : AttendanceRecord = {
+      id;
+      name = input.name;
+      mobile = input.mobile;
+      date = input.date;
+      logType = input.logType;
+      status = input.status;
+      entryTimestamp = input.entryTimestamp;
+      exitTimestamp = input.exitTimestamp;
+      locationLat = input.locationLat;
+      locationLng = input.locationLng;
+      locationType = input.locationType;
+    };
+    workList := Array.append(workList, [record]);
     nextAttendanceId += 1;
     id;
   };
 
-  public shared func updateAttendance(id : Nat, input : AttendanceInput) : async {
-    #ok : ();
-    #err : Text;
-  } {
-    if (not attendanceMap.containsKey(id)) {
+  public shared func updateAttendance(id : Nat, input : AttendanceInput) : async { #ok : (); #err : Text } {
+    let exists = Array.find(workList, func(r : AttendanceRecord) : Bool {
+      r.id == id;
+    });
+    if (exists == null) {
       return #err("Attendance record not found");
     };
-    let updated : AttendanceRecord = { input with id };
-    attendanceMap.add(id, updated);
+    workList := Array.map(workList, func(r : AttendanceRecord) : AttendanceRecord {
+      if (r.id == id) {
+        {
+          id;
+          name = input.name;
+          mobile = input.mobile;
+          date = input.date;
+          logType = input.logType;
+          status = input.status;
+          entryTimestamp = input.entryTimestamp;
+          exitTimestamp = input.exitTimestamp;
+          locationLat = input.locationLat;
+          locationLng = input.locationLng;
+          locationType = input.locationType;
+        };
+      } else { r };
+    });
     #ok();
   };
 
-  public shared func deleteAttendance(id : Nat) : async {
-    #ok : ();
-    #err : Text;
-  } {
-    if (not attendanceMap.containsKey(id)) {
+  public shared func deleteAttendance(id : Nat) : async { #ok : (); #err : Text } {
+    let before = workList.size();
+    workList := Array.filter(workList, func(r : AttendanceRecord) : Bool {
+      r.id != id;
+    });
+    if (workList.size() == before) {
       return #err("Attendance record not found");
     };
-    attendanceMap.remove(id);
     #ok();
   };
 

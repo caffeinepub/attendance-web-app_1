@@ -102,6 +102,9 @@ export interface AttendanceInput {
     logType: LogType;
     exitTimestamp: Time;
     mobile: string;
+    locationLat: number;
+    locationLng: number;
+    locationType: string;
 }
 export interface Employee {
     name: string;
@@ -116,6 +119,9 @@ export interface AttendanceRecord {
     logType: LogType;
     exitTimestamp: Time;
     mobile: string;
+    locationLat: number;
+    locationLng: number;
+    locationType: string;
 }
 export enum LogType {
     exit = "exit",
@@ -374,6 +380,9 @@ function from_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uin
     logType: _LogType;
     exitTimestamp: _Time;
     mobile: string;
+    locationLat: number;
+    locationLng: number;
+    locationType: string;
 }): {
     id: bigint;
     status: string;
@@ -383,6 +392,9 @@ function from_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uin
     logType: LogType;
     exitTimestamp: Time;
     mobile: string;
+    locationLat: number;
+    locationLng: number;
+    locationType: string;
 } {
     return {
         id: value.id,
@@ -392,7 +404,10 @@ function from_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uin
         name: value.name,
         logType: from_candid_LogType_n13(_uploadFile, _downloadFile, value.logType),
         exitTimestamp: value.exitTimestamp,
-        mobile: value.mobile
+        mobile: value.mobile,
+        locationLat: value.locationLat,
+        locationLng: value.locationLng,
+        locationType: value.locationType
     };
 }
 
@@ -440,6 +455,9 @@ function to_candid_record_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8A
     logType: LogType;
     exitTimestamp: Time;
     mobile: string;
+    locationLat: number;
+    locationLng: number;
+    locationType: string;
 }): {
     status: string;
     entryTimestamp: _Time;
@@ -448,6 +466,9 @@ function to_candid_record_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8A
     logType: _LogType;
     exitTimestamp: _Time;
     mobile: string;
+    locationLat: number;
+    locationLng: number;
+    locationType: string;
 } {
     return {
         status: value.status,
@@ -456,7 +477,10 @@ function to_candid_record_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8A
         name: value.name,
         logType: to_candid_LogType_n5(_uploadFile, _downloadFile, value.logType),
         exitTimestamp: value.exitTimestamp,
-        mobile: value.mobile
+        mobile: value.mobile,
+        locationLat: value.locationLat,
+        locationLng: value.locationLng,
+        locationType: value.locationType
     };
 }
 

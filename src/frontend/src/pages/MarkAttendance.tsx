@@ -19,7 +19,7 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { LogType } from "../backend";
-import type { Employee } from "../backend";
+import type { AttendanceInput, Employee } from "../backend";
 import { getBackend } from "../lib/getBackend";
 import { getEmployeeShift } from "./AdminPanel";
 
@@ -40,12 +40,6 @@ function haversineDistance(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/**
- * Entry status logic:
- *  - Before shift start           → "Early Entry"
- *  - 0–15 min after shift start   → "On Time"
- *  - >15 min after shift start    → "Half Day"
- */
 function getEntryStatus(mobile: string): string {
   const shift = getEmployeeShift(mobile);
   const [sh, sm] = shift.start.split(":").map(Number);
@@ -57,12 +51,6 @@ function getEntryStatus(mobile: string): string {
   return "Half Day";
 }
 
-/**
- * Exit status logic:
- *  - Before shift end            → "Early Exit"
- *  - 0–15 min after shift end    → "On Time Exit"
- *  - >15 min after shift end     → "Late Exit"
- */
 function getExitStatus(mobile: string): string {
   const shift = getEmployeeShift(mobile);
   const [eh, em] = shift.end.split(":").map(Number);
@@ -94,8 +82,12 @@ export default function MarkAttendance() {
   const now = useClock();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedMobile, setSelectedMobile] = useState("");
+  const [locationType, setLocationType] = useState<"In Showroom" | "In Kitty">(
+    "In Showroom",
+  );
   const [logType, setLogType] = useState<"entry" | "exit">("entry");
   const [loading, setLoading] = useState(false);
+  const [weekOffLoading, setWeekOffLoading] = useState(false);
   const [geoLoading, setGeoLoading] = useState(true);
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLng, setUserLng] = useState<number | null>(null);
@@ -150,44 +142,62 @@ export default function MarkAttendance() {
       toast.error("Please select an employee");
       return;
     }
-    setLoading(true);
+
+    if (isWeekOff) {
+      setWeekOffLoading(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const b = await getBackend();
       const existing = await b.getAttendanceByMobile(selectedMobile);
       const todayRecords = existing.filter((r) => r.date === today);
+
       if (!isWeekOff) {
-        const dup = todayRecords.find((r) => (r.logType as string) === logType);
+        // Check for duplicate entry/exit
+        const dup = todayRecords.find(
+          (r) => String(r.logType) === logType || r.logType === logType,
+        );
         if (dup) {
           toast.error(`Already have an ${logType} record for today`);
-          setLoading(false);
           return;
         }
       }
 
+      let finalLat = 0;
+      let finalLng = 0;
+
       if (!isWeekOff) {
-        const officeLocation = await b.getOfficeLocation();
-        if (!officeLocation) {
-          toast.error("Office location not set. Contact admin.");
-          setLoading(false);
-          return;
-        }
-        if (userLat === null || userLng === null) {
-          toast.error("Unable to get your location.");
-          setLoading(false);
-          return;
-        }
-        const dist = haversineDistance(
-          userLat,
-          userLng,
-          officeLocation.lat,
-          officeLocation.lng,
-        );
-        if (dist > 100) {
-          toast.error(
-            `You are ${Math.round(dist)}m from office. Must be within 100m.`,
+        if (locationType === "In Showroom") {
+          // Enforce geo-fence
+          const officeLocation = await b.getOfficeLocation();
+          if (!officeLocation) {
+            toast.error("Office location not set. Contact admin.");
+            return;
+          }
+          if (userLat === null || userLng === null) {
+            toast.error("GPS unavailable. Please allow location access.");
+            return;
+          }
+          const dist = haversineDistance(
+            userLat,
+            userLng,
+            officeLocation.lat,
+            officeLocation.lng,
           );
-          setLoading(false);
-          return;
+          if (dist > 100) {
+            toast.error(
+              `You are ${Math.round(dist)}m away from office. Must be within 100m for In Showroom.`,
+            );
+            return;
+          }
+          finalLat = userLat;
+          finalLng = userLng;
+        } else {
+          // In Kitty: bypass geo-fence, capture GPS if available
+          finalLat = userLat ?? 0;
+          finalLng = userLng ?? 0;
         }
       }
 
@@ -198,7 +208,7 @@ export default function MarkAttendance() {
           ? getExitStatus(selectedMobile)
           : getEntryStatus(selectedMobile);
 
-      const lt = isWeekOff
+      const lt: LogType = isWeekOff
         ? LogType.entry
         : logType === "exit"
           ? LogType.exit
@@ -208,7 +218,7 @@ export default function MarkAttendance() {
         ? `${formatTime(employeeShift.start)} - ${formatTime(employeeShift.end)}`
         : "";
 
-      const input = {
+      const input: AttendanceInput = {
         name: selectedEmployee.name,
         mobile: selectedMobile,
         date: today,
@@ -216,11 +226,14 @@ export default function MarkAttendance() {
         status,
         entryTimestamp: lt === LogType.entry ? ts : BigInt(0),
         exitTimestamp: lt === LogType.exit ? ts : BigInt(0),
+        locationLat: finalLat,
+        locationLng: finalLng,
+        locationType: isWeekOff ? "" : locationType,
       };
 
       await b.addAttendance(input);
 
-      // Sync to Google Sheets
+      // Sync to Google Sheets (fire-and-forget)
       b.getAppsScriptUrl()
         .then((url) => {
           if (url) {
@@ -230,11 +243,14 @@ export default function MarkAttendance() {
                 name: selectedEmployee.name,
                 mobile: selectedMobile,
                 date: today,
-                logType: lt,
+                logType: String(lt),
                 status,
                 shiftTiming: shift,
                 entryTimestamp: input.entryTimestamp.toString(),
                 exitTimestamp: input.exitTimestamp.toString(),
+                locationLat: input.locationLat,
+                locationLng: input.locationLng,
+                locationType: input.locationType,
               }),
             }).catch(() => {});
           }
@@ -243,11 +259,14 @@ export default function MarkAttendance() {
 
       toast.success(`Attendance marked: ${status}`);
       setSelectedMobile("");
-    } catch (e) {
-      toast.error("Failed to mark attendance");
-      console.error(e);
+      setLocationType("In Showroom");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`Failed to mark attendance: ${msg.slice(0, 80)}`);
+      console.error("Attendance error:", e);
     } finally {
       setLoading(false);
+      setWeekOffLoading(false);
     }
   }
 
@@ -305,6 +324,31 @@ export default function MarkAttendance() {
             </Select>
           </div>
 
+          {/* Work Location dropdown */}
+          <div className="space-y-1.5">
+            <Label>Work Location</Label>
+            <Select
+              value={locationType}
+              onValueChange={(v) =>
+                setLocationType(v as "In Showroom" | "In Kitty")
+              }
+            >
+              <SelectTrigger data-ocid="mark.location.select">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="In Showroom">In Showroom</SelectItem>
+                <SelectItem value="In Kitty">In Kitty</SelectItem>
+              </SelectContent>
+            </Select>
+            {locationType === "In Kitty" && (
+              <p className="text-xs text-muted-foreground">
+                Geo-fence bypassed. Your GPS coordinates will still be recorded
+                for verification.
+              </p>
+            )}
+          </div>
+
           {/* Shift time */}
           {selectedEmployee && employeeShift && (
             <div className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
@@ -349,30 +393,32 @@ export default function MarkAttendance() {
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-3 pt-1">
-            <Button
-              data-ocid="mark.submit_button"
-              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={() => submitAttendance(false)}
-              disabled={loading || !selectedMobile}
-            >
-              {loading ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : null}
-              Confirm {logType === "entry" ? "Entry" : "Exit"}
-            </Button>
-            <Button
-              data-ocid="mark.weekoff.button"
-              variant="outline"
-              onClick={() => submitAttendance(true)}
-              disabled={loading || !selectedMobile}
-              className="gap-2 sm:shrink-0"
-            >
+          {/* Confirm Entry/Exit button */}
+          <Button
+            data-ocid="mark.submit_button"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={() => submitAttendance(false)}
+            disabled={loading || weekOffLoading || !selectedMobile}
+          >
+            {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            Confirm {logType === "entry" ? "Entry" : "Exit"}
+          </Button>
+
+          {/* Mark Week Off button — always on its own row to prevent accidental taps */}
+          <Button
+            data-ocid="mark.weekoff.button"
+            variant="outline"
+            onClick={() => submitAttendance(true)}
+            disabled={loading || weekOffLoading || !selectedMobile}
+            className="w-full gap-2"
+          >
+            {weekOffLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
               <CalendarX2 className="w-4 h-4" />
-              Mark Week Off
-            </Button>
-          </div>
+            )}
+            Mark Week Off
+          </Button>
         </CardContent>
       </Card>
     </div>

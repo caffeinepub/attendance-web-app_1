@@ -23,7 +23,7 @@ export default function App() {
       case "admin":
         return <AdminPanel />;
       case "admin-dashboard":
-        return <AdminDashboard onGoToAdmin={() => setPage("admin")} />;
+        return <AdminDashboard />;
     }
   };
 

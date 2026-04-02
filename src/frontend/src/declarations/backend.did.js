@@ -11,6 +11,9 @@ export const idlFactory = ({ IDL }) => {
     'logType' : LogType,
     'exitTimestamp' : IDL.Int,
     'mobile' : IDL.Text,
+    'locationLat' : IDL.Float64,
+    'locationLng' : IDL.Float64,
+    'locationType' : IDL.Text,
   });
   const AttendanceRecord = IDL.Record({
     'id' : IDL.Nat,
@@ -21,6 +24,9 @@ export const idlFactory = ({ IDL }) => {
     'logType' : LogType,
     'exitTimestamp' : IDL.Int,
     'mobile' : IDL.Text,
+    'locationLat' : IDL.Float64,
+    'locationLng' : IDL.Float64,
+    'locationType' : IDL.Text,
   });
   const Employee = IDL.Record({ 'name' : IDL.Text, 'mobile' : IDL.Text });
   const OfficeLocation = IDL.Record({ 'lat' : IDL.Float64, 'lng' : IDL.Float64 });

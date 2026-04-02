@@ -20,6 +20,9 @@ export interface AttendanceInput {
     logType: LogType;
     exitTimestamp: Time;
     mobile: string;
+    locationLat: number;
+    locationLng: number;
+    locationType: string;
 }
 export interface Employee {
     name: string;
@@ -34,6 +37,9 @@ export interface AttendanceRecord {
     logType: LogType;
     exitTimestamp: Time;
     mobile: string;
+    locationLat: number;
+    locationLng: number;
+    locationType: string;
 }
 export enum LogType {
     exit = "exit",

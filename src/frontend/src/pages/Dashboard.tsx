@@ -1,7 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -12,10 +10,8 @@ import {
 } from "@/components/ui/table";
 import {
   Calendar,
-  CheckCircle2,
   Clock,
   Loader2,
-  Lock,
   RefreshCw,
   UserCheck,
   UserX,
@@ -26,8 +22,11 @@ import type { AttendanceRecord, Employee } from "../backend";
 import StatusBadge from "../components/StatusBadge";
 import { getBackend } from "../lib/getBackend";
 
-const ADMIN_PASSWORD = "Zaira@1234";
-const SESSION_KEY = "attend_admin_auth";
+interface AttendanceRecordExt extends AttendanceRecord {
+  locationLat: number;
+  locationLng: number;
+  locationType: string;
+}
 
 function getDateStr(offset = 0) {
   const d = new Date();
@@ -43,7 +42,7 @@ function formatTs(ts: bigint): string {
   });
 }
 
-type DisplayRow = AttendanceRecord & { isAbsent: boolean };
+type DisplayRow = AttendanceRecordExt & { isAbsent: boolean };
 
 function LogsPanel({
   title,
@@ -89,6 +88,7 @@ function LogsPanel({
                   <TableHead className="font-semibold">Log</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
                   <TableHead className="font-semibold">Time</TableHead>
+                  <TableHead className="font-semibold">Location</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -110,6 +110,21 @@ function LogsPanel({
                         ? formatTs(r.exitTimestamp)
                         : formatTs(r.entryTimestamp)}
                     </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {r.locationType ? (
+                        <span>
+                          {r.locationType}
+                          {r.locationLat !== 0 && (
+                            <span className="block text-xs opacity-70">
+                              {r.locationLat.toFixed(4)},{" "}
+                              {r.locationLng.toFixed(4)}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -122,13 +137,7 @@ function LogsPanel({
 }
 
 export default function Dashboard() {
-  const [authed, setAuthed] = useState(
-    () => sessionStorage.getItem(SESSION_KEY) === "1",
-  );
-  const [pwInput, setPwInput] = useState("");
-  const [pwError, setPwError] = useState("");
-
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [records, setRecords] = useState<AttendanceRecordExt[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -140,7 +149,7 @@ export default function Dashboard() {
         b.getAttendance(),
         b.getEmployees(),
       ]);
-      setRecords(recs);
+      setRecords(recs as AttendanceRecordExt[]);
       setEmployees(emps);
     } finally {
       setLoading(false);
@@ -148,61 +157,8 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (authed) load();
-  }, [authed, load]);
-
-  function login() {
-    if (pwInput === ADMIN_PASSWORD) {
-      sessionStorage.setItem(SESSION_KEY, "1");
-      setAuthed(true);
-      setPwError("");
-    } else {
-      setPwError("Incorrect password");
-    }
-  }
-
-  if (!authed) {
-    return (
-      <div className="max-w-sm mx-auto mt-16">
-        <Card className="border-t-4 border-t-blue-600">
-          <div className="flex flex-col items-center pt-8 pb-2">
-            <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mb-3">
-              <Lock className="w-6 h-6 text-blue-600" />
-            </div>
-            <h2 className="text-xl font-bold text-foreground">Admin Console</h2>
-            <p className="text-sm text-muted-foreground mt-1 text-center px-6">
-              Restricted access area. Please authenticate.
-            </p>
-          </div>
-          <div className="px-6 pb-6 pt-4 space-y-3">
-            <Input
-              data-ocid="dashboard.password.input"
-              type="password"
-              placeholder="Enter administrator password..."
-              value={pwInput}
-              onChange={(e) => setPwInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && login()}
-            />
-            {pwError && (
-              <p
-                data-ocid="dashboard.password.error_state"
-                className="text-sm text-destructive"
-              >
-                {pwError}
-              </p>
-            )}
-            <Button
-              data-ocid="dashboard.login.submit_button"
-              className="w-full bg-blue-600 hover:bg-blue-700"
-              onClick={login}
-            >
-              Authenticate
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
+    load();
+  }, [load]);
 
   const today = getDateStr(0);
   const yesterday = getDateStr(-1);
@@ -238,6 +194,9 @@ export default function Dashboard() {
     status: "Absent" as any,
     entryTimestamp: BigInt(0),
     exitTimestamp: BigInt(0),
+    locationLat: 0,
+    locationLng: 0,
+    locationType: "",
     isAbsent: true,
   }));
 

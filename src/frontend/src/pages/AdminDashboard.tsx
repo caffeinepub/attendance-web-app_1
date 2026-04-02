@@ -9,7 +9,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -34,7 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Lock, Pencil, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Loader2, Pencil, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { LogType } from "../backend";
@@ -42,30 +42,25 @@ import type { AttendanceRecord } from "../backend";
 import StatusBadge from "../components/StatusBadge";
 import { getBackend } from "../lib/getBackend";
 
-const ADMIN_PASSWORD = "Zaira@1234";
-const SESSION_KEY = "attend_admin_auth";
+interface AttendanceRecordExt extends AttendanceRecord {
+  locationLat: number;
+  locationLng: number;
+  locationType: string;
+}
 
 function formatTs(ts: bigint): string {
   if (!ts || ts === BigInt(0)) return "—";
   return new Date(Number(ts)).toLocaleString("en-IN");
 }
 
-interface Props {
-  onGoToAdmin: () => void;
-}
-
-export default function AdminDashboard({ onGoToAdmin }: Props) {
-  const [authed, setAuthed] = useState(
-    () => sessionStorage.getItem(SESSION_KEY) === "1",
-  );
-  const [pwInput, setPwInput] = useState("");
-  const [pwError, setPwError] = useState("");
-
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+export default function AdminDashboard() {
+  const [records, setRecords] = useState<AttendanceRecordExt[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const [editRecord, setEditRecord] = useState<AttendanceRecord | null>(null);
+  const [editRecord, setEditRecord] = useState<AttendanceRecordExt | null>(
+    null,
+  );
   const [editName, setEditName] = useState("");
   const [editMobile, setEditMobile] = useState("");
   const [editDate, setEditDate] = useState("");
@@ -81,7 +76,7 @@ export default function AdminDashboard({ onGoToAdmin }: Props) {
     try {
       const b = await getBackend();
       const recs = await b.getAttendance();
-      setRecords(recs);
+      setRecords(recs as AttendanceRecordExt[]);
     } catch {
       toast.error("Failed to load records");
     } finally {
@@ -90,20 +85,10 @@ export default function AdminDashboard({ onGoToAdmin }: Props) {
   }, []);
 
   useEffect(() => {
-    if (authed) load();
-  }, [authed, load]);
+    load();
+  }, [load]);
 
-  function login() {
-    if (pwInput === ADMIN_PASSWORD) {
-      sessionStorage.setItem(SESSION_KEY, "1");
-      setAuthed(true);
-      setPwError("");
-    } else {
-      setPwError("Incorrect password");
-    }
-  }
-
-  function openEdit(r: AttendanceRecord) {
+  function openEdit(r: AttendanceRecordExt) {
     setEditRecord(r);
     setEditName(r.name);
     setEditMobile(r.mobile);
@@ -126,6 +111,9 @@ export default function AdminDashboard({ onGoToAdmin }: Props) {
         status: editStatus,
         entryTimestamp: editRecord.entryTimestamp,
         exitTimestamp: editRecord.exitTimestamp,
+        locationLat: editRecord.locationLat ?? 0,
+        locationLng: editRecord.locationLng ?? 0,
+        locationType: editRecord.locationType ?? "",
       };
       const res = await b.updateAttendance(editRecord.id, input);
       if (res.__kind__ === "err") {
@@ -181,59 +169,6 @@ export default function AdminDashboard({ onGoToAdmin }: Props) {
     "Absent",
     "Week Off",
   ];
-
-  if (!authed) {
-    return (
-      <div className="max-w-sm mx-auto mt-16">
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Lock className="w-5 h-5 text-primary" /> Admin Dashboard Login
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="ad-pw">Password</Label>
-              <Input
-                id="ad-pw"
-                data-ocid="admin_dashboard.password.input"
-                type="password"
-                placeholder="Enter admin password"
-                value={pwInput}
-                onChange={(e) => setPwInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && login()}
-              />
-              {pwError && (
-                <p
-                  data-ocid="admin_dashboard.password.error_state"
-                  className="text-sm text-destructive"
-                >
-                  {pwError}
-                </p>
-              )}
-            </div>
-            <Button
-              data-ocid="admin_dashboard.login.submit_button"
-              className="w-full"
-              onClick={login}
-            >
-              Login
-            </Button>
-            <p className="text-center text-sm text-muted-foreground">
-              Or{" "}
-              <button
-                type="button"
-                className="text-primary hover:underline"
-                onClick={onGoToAdmin}
-              >
-                go to Admin Panel
-              </button>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -302,6 +237,7 @@ export default function AdminDashboard({ onGoToAdmin }: Props) {
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold">Entry Time</TableHead>
                     <TableHead className="font-semibold">Exit Time</TableHead>
+                    <TableHead className="font-semibold">Location</TableHead>
                     <TableHead className="font-semibold">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -328,6 +264,21 @@ export default function AdminDashboard({ onGoToAdmin }: Props) {
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {formatTs(r.exitTimestamp)}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {r.locationType ? (
+                          <span>
+                            {r.locationType}
+                            {r.locationLat !== 0 && (
+                              <span className="block text-xs opacity-70">
+                                {r.locationLat.toFixed(4)},{" "}
+                                {r.locationLng.toFixed(4)}
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">

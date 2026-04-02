@@ -16,6 +16,12 @@ import type { AttendanceRecord } from "../backend";
 import StatusBadge from "../components/StatusBadge";
 import { getBackend } from "../lib/getBackend";
 
+interface AttendanceRecordExt extends AttendanceRecord {
+  locationLat: number;
+  locationLng: number;
+  locationType: string;
+}
+
 function formatTs(ts: bigint): string {
   if (!ts || ts === BigInt(0)) return "—";
   return new Date(Number(ts)).toLocaleString("en-IN", {
@@ -26,7 +32,7 @@ function formatTs(ts: bigint): string {
 
 export default function MyAttendance() {
   const [mobile, setMobile] = useState("");
-  const [records, setRecords] = useState<AttendanceRecord[] | null>(null);
+  const [records, setRecords] = useState<AttendanceRecordExt[] | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function search() {
@@ -38,7 +44,7 @@ export default function MyAttendance() {
     try {
       const b = await getBackend();
       const recs = await b.getAttendanceByMobile(mobile.trim());
-      setRecords(recs);
+      setRecords(recs as AttendanceRecordExt[]);
       if (recs.length === 0)
         toast.info("No records found for this mobile number");
     } catch {
@@ -203,6 +209,7 @@ export default function MyAttendance() {
                         Entry Time
                       </TableHead>
                       <TableHead className="font-semibold">Exit Time</TableHead>
+                      <TableHead className="font-semibold">Location</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -224,6 +231,21 @@ export default function MyAttendance() {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {formatTs(r.exitTimestamp)}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {r.locationType ? (
+                            <span>
+                              {r.locationType}
+                              {r.locationLat !== 0 && (
+                                <span className="block text-xs opacity-70">
+                                  {r.locationLat.toFixed(4)},{" "}
+                                  {r.locationLng.toFixed(4)}
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

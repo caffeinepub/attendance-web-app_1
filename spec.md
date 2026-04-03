@@ -1,43 +1,53 @@
-# AttendTrack - TrackerPro Design Redesign
+# TrackerPro – Employee Login Feature
 
 ## Current State
-The app has 5 pages (Mark Attendance, Dashboard, My Attendance, Admin Panel, Admin Dashboard) with a light/white sidebar using AttendTrack branding. The sidebar uses light colors and the nav items use a blue highlight. All functionality (geo-fencing, per-employee shift times, Google Sheets sync, password protection) is in place.
+- App has 5 pages: Mark Attendance, Dashboard, My Attendance, Admin Panel, Admin Dashboard
+- No employee login system -- anyone can select any employee from a dropdown on Mark Attendance
+- Employee type only has `name` and `mobile` fields (no password)
+- Shift times stored in localStorage (per-device)
+- Admin Panel is password-protected with Zaira@1234 via sessionStorage
+- Backend: `getEmployees()`, `addEmployee()`, `deleteEmployee()`, `updateEmployee()`
 
 ## Requested Changes (Diff)
 
 ### Add
-- Dark navy sidebar (deep dark navy #0f1929 or similar) with white/light text
-- "TrackerPro" branding with a clock icon and "HR ATTENDANCE SYSTEM" subtitle below the logo
-- Sidebar footer showing today's date ("TODAY / Wednesday, April 1") and version number ("TrackerPro System v1.0.0")
-- Large live clock display on Mark Attendance (large blue time + date below)
-- KPI cards on Dashboard with colored left borders: blue=Total, green=Present, red=Absent, orange=Late, purple=Week Off
-- Colored icons on KPI cards matching their border color
-- "Overview" title on Dashboard with "Real-time attendance pulse for today" subtitle and Refresh Data button
-- Today's Logs (with green dot) and Yesterday's Logs side by side on Dashboard
-- "Identity Verification" card section on My Attendance with search icon in input
-- "Location Not Configured" badge on Mark Attendance top right (when no location set)
-- Admin Console password lock screen: key icon card, centered, blue top border on card
-- Admin Panel "Lock Session" button top right after auth
-- "Roster Directory" section title with "Manage personnel and shift timings" subtitle and "+ Add Personnel" button
+- **Login page** (`LoginPage.tsx`): Full-screen login form with mobile number (ID) and password fields. TrackerPro branding, dark navy theme matching the sidebar. On success, stores logged-in employee in sessionStorage (`emp_session`) and redirects to Mark Attendance.
+- **Session management**: A `useEmployeeSession` hook or inline logic in App.tsx -- reads `emp_session` from sessionStorage. If not set, show LoginPage. If set, show main app.
+- **Logout button**: In the sidebar Nav (for employee session), clicking logs out and clears `emp_session`.
+- **Backend APIs** (already added to main.mo):
+  - `loginEmployee(mobile, password)` → `{#ok: EmployeeV2} | {#err: Text}` -- verifies mobile+password, returns employee data
+  - `addEmployeeV2(EmployeeV2)` → adds employee with password and shift times
+  - `updateEmployeePassword(mobile, password)` → sets/changes password
+  - `updateEmployeeShift(mobile, shiftStart, shiftEnd)` → updates shift in backend
+  - `getEmployeesV2()` → returns employees with password + shift fields
+  - `getEmployeeShift(mobile)` → returns `{shiftStart, shiftEnd}` for a mobile
+- **Password field in Admin Panel**: When adding a new employee, include a "Password" input field. Uses `addEmployeeV2()` API. Also add a "Set Password" button per employee in the employee list (calls `updateEmployeePassword`).
+- **Shift times stored in backend**: `saveEmployeeShift` must call `updateEmployeeShift()` backend API instead of localStorage. `getEmployeeShift` in MarkAttendance must call backend `getEmployeeShift()` API instead of localStorage.
 
 ### Modify
-- Sidebar background: change from white/light to dark navy
-- Active nav item: blue pill highlight (same as current but on dark background)
-- Nav items text: white/light gray on dark background
-- "AttendTrack" name → "TrackerPro" in the sidebar
-- Dashboard title from current → "Overview" with subtitle
-- Admin Panel tabs: Employees / Logs / Location / Integrations (keep existing functionality)
-- Mark Attendance layout: clock card at top, then employee/log type below
+- **App.tsx**: Add login state. If `emp_session` not in sessionStorage, render `<LoginPage />` instead of the normal layout. Pass logged-in employee data down to pages that need it.
+- **MarkAttendance.tsx**: 
+  - Remove the employee dropdown selector
+  - Auto-use the logged-in employee (from session) for attendance marking
+  - Show the logged-in employee's name as a display label (not editable)
+  - Fetch shift from backend using `getEmployeeShift(mobile)` API instead of localStorage
+- **AdminPanel.tsx**:
+  - Add password field to "Add New Employee" form (calls `addEmployeeV2` instead of `addEmployee`)
+  - Add "Set Password" action per employee row in the employee table
+  - Change `saveEmployeeShift` to call `updateEmployeeShift()` backend API
+  - Load shift times from `getEmployeesV2()` (has shiftStart/shiftEnd fields) instead of localStorage
+  - Remove all localStorage calls for shift times
+- **Nav.tsx**: Add a logout button at the bottom for employee session (separate from Admin logout). Shows logged-in employee name.
 
 ### Remove
-- Light/white sidebar styling
-- "AttendTrack" branding text
+- `getEmployeeShift` function from AdminPanel that reads localStorage
+- All localStorage reads/writes for `shift_start_*` and `shift_end_*`
 
 ## Implementation Plan
-1. Update index.css: dark sidebar CSS variables (--sidebar: dark navy, --sidebar-foreground: white)
-2. Rewrite Nav.tsx: TrackerPro logo + clock icon, HR ATTENDANCE SYSTEM subtitle, dark nav items, date+version footer
-3. Update MarkAttendance.tsx: large live clock at top, Location Not Configured badge, keep all existing logic
-4. Update Dashboard.tsx: Overview title, colored left-border KPI cards, Today's/Yesterday's Logs side by side
-5. Update MyAttendance.tsx: Identity Verification card with search icon input
-6. Update AdminPanel.tsx: Admin Console lock screen with key icon card + blue top border; after auth show Lock Session button, Employees/Logs/Location/Integrations tabs, Roster Directory section
-7. Keep all backend logic and functionality intact
+
+1. **Update `backend.d.ts`** bindings (already regenerated by backend deploy)
+2. **Create `LoginPage.tsx`**: Full-screen dark navy login form, mobile number input + password input, calls `loginEmployee()`, on success stores session and triggers re-render
+3. **Update `App.tsx`**: Add `empSession` state (read from sessionStorage on mount). Show `<LoginPage>` when not logged in, pass employee to child pages when logged in
+4. **Update `Nav.tsx`**: Show logged-in employee name + logout button at bottom of sidebar
+5. **Update `MarkAttendance.tsx`**: Remove employee dropdown, use `loggedInEmployee` prop, fetch shift from `getEmployeeShift()` backend
+6. **Update `AdminPanel.tsx`**: Add password field in add-employee form, "Set Password" button per row, migrate shift saves to backend API, load shifts from `getEmployeesV2()`

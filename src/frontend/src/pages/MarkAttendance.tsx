@@ -15,14 +15,15 @@ import {
   LogIn,
   LogOut,
   MapPin,
+  User,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { LogType } from "../backend";
-import type { AttendanceInput, Employee } from "../backend";
+import type { AttendanceInput } from "../backend";
 import { getBackend } from "../lib/getBackend";
 import { reverseGeocode } from "../lib/reverseGeocode";
-import { getEmployeeShift } from "./AdminPanel";
+import type { EmpSession } from "./LoginPage";
 
 function fmtTsStr(ts: bigint): string {
   if (!ts || ts === BigInt(0)) return "";
@@ -54,25 +55,23 @@ function haversineDistance(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function getEntryStatus(mobile: string): string {
-  const shift = getEmployeeShift(mobile);
-  const [sh, sm] = shift.start.split(":").map(Number);
+function getEntryStatus(shiftStart: string): string {
+  const [sh, sm] = shiftStart.split(":").map(Number);
   const now = new Date();
   const mins = now.getHours() * 60 + now.getMinutes();
-  const shiftStart = sh * 60 + sm;
-  if (mins < shiftStart) return "Early Entry";
-  if (mins <= shiftStart + 15) return "On Time";
+  const shiftStartMins = sh * 60 + sm;
+  if (mins < shiftStartMins) return "Early Entry";
+  if (mins <= shiftStartMins + 15) return "On Time";
   return "Half Day";
 }
 
-function getExitStatus(mobile: string): string {
-  const shift = getEmployeeShift(mobile);
-  const [eh, em] = shift.end.split(":").map(Number);
+function getExitStatus(shiftEnd: string): string {
+  const [eh, em] = shiftEnd.split(":").map(Number);
   const now = new Date();
   const mins = now.getHours() * 60 + now.getMinutes();
-  const shiftEnd = eh * 60 + em;
-  if (mins < shiftEnd) return "Early Exit";
-  if (mins <= shiftEnd + 15) return "On Time Exit";
+  const shiftEndMins = eh * 60 + em;
+  if (mins < shiftEndMins) return "Early Exit";
+  if (mins <= shiftEndMins + 15) return "On Time Exit";
   return "Late Exit";
 }
 
@@ -92,10 +91,15 @@ function useClock() {
   return time;
 }
 
-export default function MarkAttendance() {
+interface MarkAttendanceProps {
+  loggedInEmployee: EmpSession;
+  onLogout?: () => void;
+}
+
+export default function MarkAttendance({
+  loggedInEmployee,
+}: MarkAttendanceProps) {
   const now = useClock();
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [selectedMobile, setSelectedMobile] = useState("");
   const [locationType, setLocationType] = useState<"In Showroom" | "In Kitty">(
     "In Showroom",
   );
@@ -107,19 +111,13 @@ export default function MarkAttendance() {
   const [userLng, setUserLng] = useState<number | null>(null);
   const [locationConfigured, setLocationConfigured] = useState(false);
 
-  const selectedEmployee = employees.find((e) => e.mobile === selectedMobile);
-  const employeeShift = selectedMobile
-    ? getEmployeeShift(selectedMobile)
-    : null;
+  const shiftStart = loggedInEmployee.shiftStart || "10:30";
+  const shiftEnd = loggedInEmployee.shiftEnd || "20:00";
 
   useEffect(() => {
     getBackend()
       .then(async (b) => {
-        const [emps, loc] = await Promise.all([
-          b.getEmployees(),
-          b.getOfficeLocation(),
-        ]);
-        setEmployees(emps);
+        const loc = await b.getOfficeLocation();
         setLocationConfigured(!!loc);
       })
       .catch(console.error);
@@ -152,11 +150,6 @@ export default function MarkAttendance() {
     .toUpperCase();
 
   async function submitAttendance(isWeekOff: boolean) {
-    if (!selectedMobile || !selectedEmployee) {
-      toast.error("Please select an employee");
-      return;
-    }
-
     if (isWeekOff) {
       setWeekOffLoading(true);
     } else {
@@ -165,11 +158,10 @@ export default function MarkAttendance() {
 
     try {
       const b = await getBackend();
-      const existing = await b.getAttendanceByMobile(selectedMobile);
+      const existing = await b.getAttendanceByMobile(loggedInEmployee.mobile);
       const todayRecords = existing.filter((r) => r.date === today);
 
       if (!isWeekOff) {
-        // Check for duplicate entry/exit
         const dup = todayRecords.find(
           (r) => String(r.logType) === logType || r.logType === logType,
         );
@@ -184,7 +176,6 @@ export default function MarkAttendance() {
 
       if (!isWeekOff) {
         if (locationType === "In Showroom") {
-          // Enforce geo-fence
           const officeLocation = await b.getOfficeLocation();
           if (!officeLocation) {
             toast.error("Office location not set. Contact admin.");
@@ -209,7 +200,6 @@ export default function MarkAttendance() {
           finalLat = userLat;
           finalLng = userLng;
         } else {
-          // In Kitty: bypass geo-fence, capture GPS if available
           finalLat = userLat ?? 0;
           finalLng = userLng ?? 0;
         }
@@ -219,8 +209,8 @@ export default function MarkAttendance() {
       const status: string = isWeekOff
         ? "Week Off"
         : logType === "exit"
-          ? getExitStatus(selectedMobile)
-          : getEntryStatus(selectedMobile);
+          ? getExitStatus(shiftEnd)
+          : getEntryStatus(shiftStart);
 
       const lt: LogType = isWeekOff
         ? LogType.entry
@@ -228,13 +218,11 @@ export default function MarkAttendance() {
           ? LogType.exit
           : LogType.entry;
 
-      const shift = employeeShift
-        ? `${formatTime(employeeShift.start)} - ${formatTime(employeeShift.end)}`
-        : "";
+      const shiftTiming = `${formatTime(shiftStart)} - ${formatTime(shiftEnd)}`;
 
       const input: AttendanceInput = {
-        name: selectedEmployee.name,
-        mobile: selectedMobile,
+        name: loggedInEmployee.name,
+        mobile: loggedInEmployee.mobile,
         date: today,
         logType: lt,
         status,
@@ -270,12 +258,12 @@ export default function MarkAttendance() {
               method: "POST",
               mode: "no-cors" as RequestMode,
               body: JSON.stringify({
-                name: selectedEmployee.name,
-                mobile: selectedMobile,
+                name: loggedInEmployee.name,
+                mobile: loggedInEmployee.mobile,
                 date: today,
                 logType: String(lt),
                 status,
-                shiftTiming: shift,
+                shiftTiming,
                 entryTimestamp: fmtTsStr(input.entryTimestamp),
                 exitTimestamp: fmtTsStr(input.exitTimestamp),
                 workLocation,
@@ -287,7 +275,6 @@ export default function MarkAttendance() {
         .catch(() => {});
 
       toast.success(`Attendance marked: ${status}`);
-      setSelectedMobile("");
       setLocationType("In Showroom");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -336,21 +323,22 @@ export default function MarkAttendance() {
       {/* Form card */}
       <Card>
         <CardContent className="pt-5 space-y-4">
-          {/* Employee selector */}
-          <div className="space-y-1.5">
-            <Label>Employee</Label>
-            <Select value={selectedMobile} onValueChange={setSelectedMobile}>
-              <SelectTrigger data-ocid="mark.select">
-                <SelectValue placeholder="Select your profile..." />
-              </SelectTrigger>
-              <SelectContent>
-                {employees.map((emp) => (
-                  <SelectItem key={emp.mobile} value={emp.mobile}>
-                    {emp.name} — {emp.mobile}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Logged-in employee display */}
+          <div className="flex items-center gap-3 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+              <User className="w-4 h-4 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">
+                {loggedInEmployee.name}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {loggedInEmployee.mobile}
+              </p>
+            </div>
+            <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 shrink-0">
+              Logged in
+            </span>
           </div>
 
           {/* Work Location dropdown */}
@@ -379,15 +367,13 @@ export default function MarkAttendance() {
           </div>
 
           {/* Shift time */}
-          {selectedEmployee && employeeShift && (
-            <div className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-              <Clock className="w-4 h-4 shrink-0" />
-              <span>
-                Shift: <strong>{formatTime(employeeShift.start)}</strong> –{" "}
-                <strong>{formatTime(employeeShift.end)}</strong>
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+            <Clock className="w-4 h-4 shrink-0" />
+            <span>
+              Shift: <strong>{formatTime(shiftStart)}</strong> –{" "}
+              <strong>{formatTime(shiftEnd)}</strong>
+            </span>
+          </div>
 
           {/* Log type toggle */}
           <div className="space-y-1.5">
@@ -427,7 +413,7 @@ export default function MarkAttendance() {
             data-ocid="mark.submit_button"
             className="w-full bg-blue-600 hover:bg-blue-700 text-white"
             onClick={() => submitAttendance(false)}
-            disabled={loading || weekOffLoading || !selectedMobile}
+            disabled={loading || weekOffLoading}
           >
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
             Confirm {logType === "entry" ? "Entry" : "Exit"}
@@ -438,7 +424,7 @@ export default function MarkAttendance() {
             data-ocid="mark.weekoff.button"
             variant="outline"
             onClick={() => submitAttendance(true)}
-            disabled={loading || weekOffLoading || !selectedMobile}
+            disabled={loading || weekOffLoading}
             className="w-full gap-2"
           >
             {weekOffLoading ? (

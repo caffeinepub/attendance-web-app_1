@@ -3,6 +3,7 @@ import {
   ClipboardList,
   Clock,
   LayoutGrid,
+  LogOut,
   Menu,
   Settings,
   User,
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { Page } from "../App";
+import type { EmpSession } from "../pages/LoginPage";
 
 const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   {
@@ -37,6 +39,8 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
 interface NavProps {
   currentPage: Page;
   onNavigate: (page: Page) => void;
+  loggedInEmployee?: EmpSession | null;
+  onLogout?: () => void;
 }
 
 function formatDate() {
@@ -47,10 +51,21 @@ function formatDate() {
   });
 }
 
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
 function SidebarContent({
   currentPage,
   onNavigate,
   onClose,
+  loggedInEmployee,
+  onLogout,
 }: NavProps & { onClose?: () => void }) {
   return (
     <div
@@ -91,8 +106,6 @@ function SidebarContent({
             data-ocid={`nav.${item.id}.link`}
             onClick={() => {
               if (onClose) {
-                // Close drawer first, then navigate after a short delay
-                // to prevent ghost-click on the newly rendered page
                 onClose();
                 setTimeout(() => onNavigate(item.id), 250);
               } else {
@@ -112,13 +125,45 @@ function SidebarContent({
         ))}
       </nav>
 
-      {/* Bottom */}
+      {/* Divider */}
       <div className="mx-5 border-t border-white/10" />
-      <div className="px-5 py-4 shrink-0">
+
+      {/* Logged-in user section */}
+      {loggedInEmployee && (
+        <div className="px-4 py-3 shrink-0">
+          <div className="flex items-center gap-2.5 mb-2">
+            <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+              <span className="text-white text-[10px] font-bold">
+                {getInitials(loggedInEmployee.name)}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-xs font-semibold truncate">
+                {loggedInEmployee.name}
+              </p>
+              <p className="text-slate-500 text-[10px] truncate">
+                {loggedInEmployee.mobile}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            data-ocid="nav.logout.button"
+            onClick={onLogout}
+            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md border border-white/10 text-slate-400 hover:text-white hover:border-white/20 hover:bg-white/5 transition-all text-xs font-medium"
+          >
+            <LogOut className="w-3 h-3" />
+            Sign Out
+          </button>
+        </div>
+      )}
+
+      {/* Bottom */}
+      <div className="px-5 py-3 shrink-0">
         <p className="text-[10px] uppercase tracking-widest text-slate-600 font-semibold mb-1">
           Today
         </p>
-        <p className="text-xs text-white mb-3">{formatDate()}</p>
+        <p className="text-xs text-white mb-2">{formatDate()}</p>
         <p className="text-[11px] text-slate-500">TrackerPro System</p>
         <p className="text-[11px] text-slate-600">v1.0.0</p>
       </div>
@@ -126,7 +171,12 @@ function SidebarContent({
   );
 }
 
-export default function Nav({ currentPage, onNavigate }: NavProps) {
+export default function Nav({
+  currentPage,
+  onNavigate,
+  loggedInEmployee,
+  onLogout,
+}: NavProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -136,7 +186,12 @@ export default function Nav({ currentPage, onNavigate }: NavProps) {
         className="hidden md:flex flex-col w-48 shrink-0 h-screen sticky top-0"
         style={{ backgroundColor: "#0f1929" }}
       >
-        <SidebarContent currentPage={currentPage} onNavigate={onNavigate} />
+        <SidebarContent
+          currentPage={currentPage}
+          onNavigate={onNavigate}
+          loggedInEmployee={loggedInEmployee}
+          onLogout={onLogout}
+        />
       </aside>
 
       {/* Mobile top bar */}
@@ -157,6 +212,13 @@ export default function Nav({ currentPage, onNavigate }: NavProps) {
         <span className="font-bold text-white text-sm tracking-tight">
           TrackerPro
         </span>
+        {loggedInEmployee && (
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-slate-400 text-xs truncate max-w-[100px]">
+              {loggedInEmployee.name}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Mobile slide-in drawer */}
@@ -179,6 +241,8 @@ export default function Nav({ currentPage, onNavigate }: NavProps) {
               currentPage={currentPage}
               onNavigate={onNavigate}
               onClose={() => setMobileOpen(false)}
+              loggedInEmployee={loggedInEmployee}
+              onLogout={onLogout}
             />
           </div>
         </button>

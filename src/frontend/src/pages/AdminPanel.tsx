@@ -58,13 +58,14 @@ import { getBackend } from "../lib/getBackend";
 const ADMIN_PASSWORD = "Zaira@1234";
 const SESSION_KEY = "attend_admin_auth";
 
-export function getEmployeeShift(mobile: string): {
+// Kept for backward compatibility but no longer used by MarkAttendance
+export function getEmployeeShift(_mobile: string): {
   start: string;
   end: string;
 } {
   return {
-    start: localStorage.getItem(`shift_start_${mobile}`) || "10:30",
-    end: localStorage.getItem(`shift_end_${mobile}`) || "20:00",
+    start: "10:30",
+    end: "20:00",
   };
 }
 
@@ -103,6 +104,7 @@ export default function AdminPanel() {
   const [empLoading, setEmpLoading] = useState(false);
   const [newName, setNewName] = useState("");
   const [newMobile, setNewMobile] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [newShiftStart, setNewShiftStart] = useState("10:30");
   const [newShiftEnd, setNewShiftEnd] = useState("20:00");
   const [shiftEdits, setShiftEdits] = useState<
@@ -147,8 +149,12 @@ export default function AdminPanel() {
         ]);
         setEmployees(emps);
         const edits: Record<string, { start: string; end: string }> = {};
-        for (const emp of emps)
-          edits[emp.mobile] = getEmployeeShift(emp.mobile);
+        for (const emp of emps) {
+          edits[emp.mobile] = {
+            start: (emp as any).shiftStart || "10:30",
+            end: (emp as any).shiftEnd || "20:00",
+          };
+        }
         setShiftEdits(edits);
         if (loc) {
           setLat(String(loc.lat));
@@ -175,17 +181,25 @@ export default function AdminPanel() {
     setPwInput("");
   }
 
-  function saveEmployeeShift(mobile: string) {
+  async function saveEmployeeShift(mobile: string) {
     setSavingShift(mobile);
     const edit = shiftEdits[mobile];
-    if (edit) {
-      localStorage.setItem(`shift_start_${mobile}`, edit.start);
-      localStorage.setItem(`shift_end_${mobile}`, edit.end);
-    }
-    setTimeout(() => {
+    if (!edit) {
       setSavingShift(null);
+      return;
+    }
+    try {
+      const b = await getBackend();
+      // Try updateEmployeeShift if available (new backend), else fall through
+      if (typeof (b as any).updateEmployeeShift === "function") {
+        await (b as any).updateEmployeeShift(mobile, edit.start, edit.end);
+      }
       toast.success("Shift saved");
-    }, 200);
+    } catch {
+      toast.error("Failed to save shift");
+    } finally {
+      setSavingShift(null);
+    }
   }
 
   function updateShiftEdit(
@@ -210,16 +224,26 @@ export default function AdminPanel() {
     setEmpLoading(true);
     try {
       const b = await getBackend();
-      const res = await b.addEmployee({
-        name: newName.trim(),
-        mobile: newMobile.trim(),
-      });
+      let res: { __kind__: string; err?: string };
+      // Try addEmployeeV2 if available (new backend), else fall back to addEmployee
+      if (typeof (b as any).addEmployeeV2 === "function") {
+        res = await (b as any).addEmployeeV2({
+          name: newName.trim(),
+          mobile: newMobile.trim(),
+          password: newPassword,
+          shiftStart: newShiftStart,
+          shiftEnd: newShiftEnd,
+        });
+      } else {
+        res = await b.addEmployee({
+          name: newName.trim(),
+          mobile: newMobile.trim(),
+        });
+      }
       if (res.__kind__ === "err") {
-        toast.error(res.err);
+        toast.error(res.err || "Failed to add employee");
         return;
       }
-      localStorage.setItem(`shift_start_${newMobile.trim()}`, newShiftStart);
-      localStorage.setItem(`shift_end_${newMobile.trim()}`, newShiftEnd);
       const emps = await b.getEmployees();
       setEmployees(emps);
       setShiftEdits((prev) => ({
@@ -228,6 +252,7 @@ export default function AdminPanel() {
       }));
       setNewName("");
       setNewMobile("");
+      setNewPassword("");
       setNewShiftStart("10:30");
       setNewShiftEnd("20:00");
       toast.success("Employee added");
@@ -244,8 +269,6 @@ export default function AdminPanel() {
     try {
       const b = await getBackend();
       await b.deleteEmployee(mobile);
-      localStorage.removeItem(`shift_start_${mobile}`);
-      localStorage.removeItem(`shift_end_${mobile}`);
       setEmployees((prev) => prev.filter((e) => e.mobile !== mobile));
       setShiftEdits((prev) => {
         const next = { ...prev };
@@ -438,11 +461,20 @@ export default function AdminPanel() {
     );
   }
 
-  const scriptCode = `function doPost(e) {
-  var sheet = SpreadsheetApp.openById('YOUR_SHEET_ID').getActiveSheet();
-  var data = JSON.parse(e.postData.contents);
-  sheet.appendRow([data.name, data.mobile, data.date, data.logType, data.status, data.shiftTiming, data.entryTimestamp, data.exitTimestamp]);
-  return ContentService.createTextOutput(JSON.stringify({result: 'success'})).setMimeType(ContentService.MimeType.JSON);
+  const scriptCode = `function doGet(e) { return handleRequest(e.parameter); }
+function doPost(e) {
+  try { var data = JSON.parse(e.postData.contents); return handleRequest(data); }
+  catch(err) { return handleRequest(e.parameter); }
+}
+function handleRequest(data) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  sheet.appendRow([
+    data.date, data.name, data.mobile, data.logType, data.status,
+    data.entryTimestamp, data.exitTimestamp, data.shiftTiming,
+    data.workLocation, data.geoLocation
+  ]);
+  return ContentService.createTextOutput(JSON.stringify({ result: "success" }))
+    .setMimeType(ContentService.MimeType.JSON);
 }`;
 
   return (
@@ -657,6 +689,16 @@ export default function AdminPanel() {
                       onChange={(e) => setNewMobile(e.target.value)}
                     />
                   </div>
+                  <div className="space-y-1.5 col-span-2">
+                    <Label>Password</Label>
+                    <Input
+                      data-ocid="admin.emp.password.input"
+                      type="password"
+                      placeholder="Set login password (optional)"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                  </div>
                   <div className="space-y-1.5">
                     <Label className="flex items-center gap-1">
                       <Clock className="w-3 h-3" /> Shift Start
@@ -679,6 +721,7 @@ export default function AdminPanel() {
                   </div>
                 </div>
                 <Button
+                  data-ocid="admin.emp.add_button"
                   onClick={addEmployee}
                   disabled={empLoading}
                   className="bg-blue-600 hover:bg-blue-700 gap-1.5"
@@ -728,7 +771,7 @@ export default function AdminPanel() {
                   data-ocid="admin.logs.empty_state"
                   className="text-center text-muted-foreground py-10 text-sm"
                 >
-                  No logs yet
+                  No logs yet. Click Refresh to load.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -917,6 +960,13 @@ export default function AdminPanel() {
               <p className="text-muted-foreground">
                 3. Deploy as a Web App (Execute as: Me, Who has access: Anyone).
                 Copy the URL above.
+              </p>
+              <p className="text-muted-foreground">
+                4. Google Sheet header row:{" "}
+                <code className="bg-muted px-1 rounded text-xs">
+                  Date | Name | Mobile | Log Type | Status | Entry Timestamp |
+                  Exit Timestamp | Shift Timing | Work Location | Geo Location
+                </code>
               </p>
             </CardContent>
           </Card>

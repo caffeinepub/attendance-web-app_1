@@ -12,6 +12,14 @@ actor {
     mobile : Text;
   };
 
+  public type EmployeeV2 = {
+    name : Text;
+    mobile : Text;
+    password : Text;
+    shiftStart : Text;
+    shiftEnd : Text;
+  };
+
   type AttendanceRecordV1 = {
     id : Nat;
     name : Text;
@@ -73,9 +81,6 @@ actor {
   };
 
   // ── Legacy stub stable vars ──
-  // These satisfy M0169 upgrade compatibility for vars that existed in older
-  // deployed versions that used mo:core/Map. They are never read or written.
-  // Map.Map<K,V> is the correct type match for the on-chain serialized state.
   stable var attendanceRecords : Map.Map<Nat, OldAttendanceRecord> = Map.empty();
   stable var employees : Map.Map<Text, Employee> = Map.empty();
   stable var attendanceMap : Map.Map<Nat, AttendanceRecordV1> = Map.empty();
@@ -89,16 +94,20 @@ actor {
   stable var appsScriptUrl : Text = "";
   stable var stableAttendanceV2 : [AttendanceRecord] = [];
   stable var v2MigrationDone : Bool = false;
+  stable var stableEmployeesV2 : [EmployeeV2] = [];
+  stable var v3MigrationDone : Bool = false;
 
   // ── In-memory working state ──
   var empList : [Employee] = [];
   var attList : [AttendanceRecordV1] = [];
   var workList : [AttendanceRecord] = [];
+  var empV2List : [EmployeeV2] = [];
 
   system func preupgrade() {
     stableEmployees := empList;
     stableAttendance := attList;
     stableAttendanceV2 := workList;
+    stableEmployeesV2 := empV2List;
   };
 
   system func postupgrade() {
@@ -129,7 +138,30 @@ actor {
       v2MigrationDone := true;
     };
 
-    empList := stableEmployees;
+    // v3 migration: migrate old employees (no password) to EmployeeV2
+    if (not v3MigrationDone) {
+      for (e in stableEmployees.vals()) {
+        // Check if already in v2 list
+        let exists = Array.find(stableEmployeesV2, func(ev2 : EmployeeV2) : Bool {
+          ev2.mobile == e.mobile
+        });
+        if (exists == null) {
+          let ev2 : EmployeeV2 = {
+            name = e.name;
+            mobile = e.mobile;
+            password = "";
+            shiftStart = "10:30";
+            shiftEnd = "20:00";
+          };
+          stableEmployeesV2 := Array.append(stableEmployeesV2, [ev2]);
+        };
+      };
+      stableEmployees := [];
+      empList := [];
+      v3MigrationDone := true;
+    };
+
+    empV2List := stableEmployeesV2;
     workList := stableAttendanceV2;
     for (r in workList.vals()) {
       if (r.id >= nextAttendanceId) { nextAttendanceId := r.id + 1 };
@@ -139,9 +171,23 @@ actor {
   // ── Query endpoints ──
 
   public query func getEmployees() : async [Employee] {
-    Array.sort(empList, func(a : Employee, b : Employee) : Order.Order {
-      Text.compare(a.mobile, b.mobile);
+    let v2sorted = Array.sort(empV2List, func(a : EmployeeV2, b : EmployeeV2) : Order.Order {
+      Text.compare(a.mobile, b.mobile)
     });
+    Array.map(v2sorted, func(e : EmployeeV2) : Employee { { name = e.name; mobile = e.mobile } });
+  };
+
+  public query func getEmployeesV2() : async [EmployeeV2] {
+    Array.sort(empV2List, func(a : EmployeeV2, b : EmployeeV2) : Order.Order {
+      Text.compare(a.mobile, b.mobile)
+    });
+  };
+
+  public query func getEmployeeShift(mobile : Text) : async ?{ shiftStart : Text; shiftEnd : Text } {
+    switch (Array.find(empV2List, func(e : EmployeeV2) : Bool { e.mobile == mobile })) {
+      case null { null };
+      case (?e) { ?{ shiftStart = e.shiftStart; shiftEnd = e.shiftEnd } };
+    };
   };
 
   public query func getAttendance() : async [AttendanceRecord] {
@@ -164,38 +210,97 @@ actor {
     appsScriptUrl;
   };
 
+  // ── Auth endpoint ──
+
+  public shared func loginEmployee(mobile : Text, password : Text) : async { #ok : EmployeeV2; #err : Text } {
+    switch (Array.find(empV2List, func(e : EmployeeV2) : Bool { e.mobile == mobile })) {
+      case null { #err("Employee not found") };
+      case (?e) {
+        if (e.password == "" or e.password == password) {
+          #ok(e)
+        } else {
+          #err("Incorrect password")
+        }
+      };
+    };
+  };
+
   // ── Update endpoints ──
 
   public shared func addEmployee(emp : Employee) : async { #ok : (); #err : Text } {
-    let exists = Array.find(empList, func(e : Employee) : Bool {
+    let exists = Array.find(empV2List, func(e : EmployeeV2) : Bool {
       e.mobile == emp.mobile;
     });
     if (exists != null) {
       return #err("Employee already exists");
     };
-    empList := Array.append(empList, [emp]);
+    let ev2 : EmployeeV2 = {
+      name = emp.name;
+      mobile = emp.mobile;
+      password = "";
+      shiftStart = "10:30";
+      shiftEnd = "20:00";
+    };
+    empV2List := Array.append(empV2List, [ev2]);
+    #ok();
+  };
+
+  public shared func addEmployeeV2(emp : EmployeeV2) : async { #ok : (); #err : Text } {
+    let exists = Array.find(empV2List, func(e : EmployeeV2) : Bool {
+      e.mobile == emp.mobile;
+    });
+    if (exists != null) {
+      return #err("Employee already exists");
+    };
+    empV2List := Array.append(empV2List, [emp]);
     #ok();
   };
 
   public shared func updateEmployee(mobile : Text, newName : Text) : async { #ok : (); #err : Text } {
-    let exists = Array.find(empList, func(e : Employee) : Bool {
+    let exists = Array.find(empV2List, func(e : EmployeeV2) : Bool {
       e.mobile == mobile;
     });
     if (exists == null) {
       return #err("Employee not found");
     };
-    empList := Array.map(empList, func(e : Employee) : Employee {
-      if (e.mobile == mobile) { { name = newName; mobile } } else { e };
+    empV2List := Array.map(empV2List, func(e : EmployeeV2) : EmployeeV2 {
+      if (e.mobile == mobile) { { name = newName; mobile = e.mobile; password = e.password; shiftStart = e.shiftStart; shiftEnd = e.shiftEnd } } else { e };
+    });
+    #ok();
+  };
+
+  public shared func updateEmployeePassword(mobile : Text, password : Text) : async { #ok : (); #err : Text } {
+    let exists = Array.find(empV2List, func(e : EmployeeV2) : Bool {
+      e.mobile == mobile;
+    });
+    if (exists == null) {
+      return #err("Employee not found");
+    };
+    empV2List := Array.map(empV2List, func(e : EmployeeV2) : EmployeeV2 {
+      if (e.mobile == mobile) { { name = e.name; mobile = e.mobile; password = password; shiftStart = e.shiftStart; shiftEnd = e.shiftEnd } } else { e };
+    });
+    #ok();
+  };
+
+  public shared func updateEmployeeShift(mobile : Text, shiftStart : Text, shiftEnd : Text) : async { #ok : (); #err : Text } {
+    let exists = Array.find(empV2List, func(e : EmployeeV2) : Bool {
+      e.mobile == mobile;
+    });
+    if (exists == null) {
+      return #err("Employee not found");
+    };
+    empV2List := Array.map(empV2List, func(e : EmployeeV2) : EmployeeV2 {
+      if (e.mobile == mobile) { { name = e.name; mobile = e.mobile; password = e.password; shiftStart = shiftStart; shiftEnd = shiftEnd } } else { e };
     });
     #ok();
   };
 
   public shared func deleteEmployee(mobile : Text) : async { #ok : (); #err : Text } {
-    let before = empList.size();
-    empList := Array.filter(empList, func(e : Employee) : Bool {
+    let before = empV2List.size();
+    empV2List := Array.filter(empV2List, func(e : EmployeeV2) : Bool {
       e.mobile != mobile;
     });
-    if (empList.size() == before) {
+    if (empV2List.size() == before) {
       return #err("Employee not found");
     };
     #ok();

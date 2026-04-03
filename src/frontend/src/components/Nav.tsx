@@ -35,6 +35,7 @@ const allNavItems: {
     id: "my",
     label: "My Attendance",
     icon: <User className="w-4 h-4 shrink-0" />,
+    hideForAdmin: true,
   },
   {
     id: "admin",

@@ -93,9 +93,15 @@ const LOG_STATUS_OPTIONS = [
   "Week Off",
 ];
 
-export default function AdminPanel() {
+interface AdminPanelProps {
+  isAdminSession?: boolean;
+}
+
+export default function AdminPanel({
+  isAdminSession = false,
+}: AdminPanelProps) {
   const [authed, setAuthed] = useState(
-    () => sessionStorage.getItem(SESSION_KEY) === "1",
+    () => isAdminSession || sessionStorage.getItem(SESSION_KEY) === "1",
   );
   const [pwInput, setPwInput] = useState("");
   const [pwError, setPwError] = useState("");

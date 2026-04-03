@@ -20,6 +20,10 @@ export default function App() {
   function handleLogin(emp: EmpSession) {
     sessionStorage.setItem("emp_session", JSON.stringify(emp));
     setEmpSession(emp);
+    // Redirect admin directly to Admin Panel
+    if (emp.isAdmin) {
+      setPage("admin");
+    }
   }
 
   function handleLogout() {
@@ -50,7 +54,7 @@ export default function App() {
       case "my":
         return <MyAttendance />;
       case "admin":
-        return <AdminPanel />;
+        return <AdminPanel isAdminSession={empSession.isAdmin} />;
       case "admin-dashboard":
         return <AdminDashboard />;
     }

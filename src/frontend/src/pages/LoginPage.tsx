@@ -7,11 +7,15 @@ import { toast } from "sonner";
 import type { Employee } from "../backend";
 import { getBackend } from "../lib/getBackend";
 
+const ADMIN_MOBILE = "9999999999";
+const ADMIN_PASSWORD = "Zaira@1234";
+
 export interface EmpSession {
   name: string;
   mobile: string;
   shiftStart: string;
   shiftEnd: string;
+  isAdmin: boolean;
 }
 
 interface LoginPageProps {
@@ -30,8 +34,31 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       toast.error("Please enter your mobile number");
       return;
     }
+    if (!password.trim()) {
+      toast.error("Please enter your password");
+      return;
+    }
     setLoading(true);
     try {
+      // Admin login check
+      if (mobile.trim() === ADMIN_MOBILE) {
+        if (password !== ADMIN_PASSWORD) {
+          toast.error("Incorrect admin password");
+          return;
+        }
+        const session: EmpSession = {
+          name: "Administrator",
+          mobile: ADMIN_MOBILE,
+          shiftStart: "10:30",
+          shiftEnd: "20:00",
+          isAdmin: true,
+        };
+        onLogin(session);
+        toast.success("Welcome, Administrator!");
+        return;
+      }
+
+      // Employee login check
       const b = await getBackend();
       const employees: Employee[] = await b.getEmployees();
       const found = employees.find((emp) => emp.mobile === mobile.trim());
@@ -39,14 +66,20 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         toast.error("Employee not found. Please contact your administrator.");
         return;
       }
-      // Since current backend Employee type has no password field,
-      // we allow login if employee exists (password is optional / not enforced yet)
-      // This matches spec: "If an employee has no password set, login should succeed"
+
+      // Check password if employee has one set
+      const empPassword = (found as any).password;
+      if (empPassword && empPassword !== password) {
+        toast.error("Incorrect password");
+        return;
+      }
+
       const session: EmpSession = {
         name: found.name,
         mobile: found.mobile,
         shiftStart: (found as any).shiftStart || "10:30",
         shiftEnd: (found as any).shiftEnd || "20:00",
+        isAdmin: false,
       };
       onLogin(session);
       toast.success(`Welcome, ${found.name}!`);
@@ -110,12 +143,12 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                 id="mobile"
                 data-ocid="login.mobile.input"
                 type="tel"
-                placeholder="Enter your mobile number"
+                placeholder="Enter mobile number"
                 value={mobile}
                 onChange={(e) => setMobile(e.target.value)}
-                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20 h-11"
+                className="bg-white/5 border-white/20 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20"
                 autoComplete="tel"
-                autoFocus
+                inputMode="numeric"
               />
             </div>
 
@@ -131,15 +164,15 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                   id="password"
                   data-ocid="login.password.input"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
+                  placeholder="Enter password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20 h-11 pr-10"
+                  className="bg-white/5 border-white/20 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20 pr-10"
                   autoComplete="current-password"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword((p) => !p)}
+                  onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
                   tabIndex={-1}
                 >
@@ -150,16 +183,13 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                   )}
                 </button>
               </div>
-              <p className="text-xs text-slate-500">
-                Leave blank if no password is set
-              </p>
             </div>
 
             <Button
               type="submit"
-              data-ocid="login.submit_button"
+              data-ocid="login.submit.button"
               disabled={loading}
-              className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold gap-2 mt-2"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 gap-2"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -169,11 +199,11 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
-        </div>
 
-        <p className="text-center text-slate-600 text-xs mt-6">
-          Admin access? Use the Admin Panel after login
-        </p>
+          <p className="text-center text-slate-500 text-xs mt-6">
+            Contact your administrator if you forgot your password
+          </p>
+        </div>
       </div>
     </div>
   );

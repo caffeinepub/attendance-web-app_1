@@ -173,12 +173,26 @@ export default function MarkAttendance({
       const existing = await b.getAttendanceByMobile(loggedInEmployee.mobile);
       const todayRecords = existing.filter((r) => r.date === today);
 
-      if (!isWeekOff) {
-        const dup = todayRecords.find(
-          (r) => String(r.logType) === logType || r.logType === logType,
+      if (isWeekOff) {
+        // Block duplicate Week Off
+        const alreadyWeekOff = todayRecords.find(
+          (r) => r.status === "Week Off",
         );
+        if (alreadyWeekOff) {
+          toast.error("Week Off already marked for today.");
+          return;
+        }
+      } else {
+        // Block duplicate Entry or Exit
+        const normalizedLogType = logType === "entry" ? "entry" : "exit";
+        const dup = todayRecords.find((r) => {
+          const rt = String(r.logType).toLowerCase();
+          return rt === normalizedLogType && r.status !== "Week Off";
+        });
         if (dup) {
-          toast.error(`Already have an ${logType} record for today`);
+          toast.error(
+            `${logType === "entry" ? "Entry" : "Exit"} already marked for today.`,
+          );
           return;
         }
       }

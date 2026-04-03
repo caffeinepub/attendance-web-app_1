@@ -110,6 +110,13 @@ export interface Employee {
     name: string;
     mobile: string;
 }
+export interface EmployeeV2 {
+    name: string;
+    mobile: string;
+    password: string;
+    shiftStart: string;
+    shiftEnd: string;
+}
 export interface AttendanceRecord {
     id: bigint;
     status: string;
@@ -164,6 +171,13 @@ export interface backendInterface {
         __kind__: "err";
         err: string;
     }>;
+    loginEmployee(mobile: string, password: string): Promise<{ __kind__: "ok"; ok: EmployeeV2 } | { __kind__: "err"; err: string }>;
+    getEmployeeShift(mobile: string): Promise<{ shiftStart: string; shiftEnd: string } | null>;
+    getEmployeesV2(): Promise<Array<EmployeeV2>>;
+    updateEmployee(mobile: string, newName: string): Promise<{ __kind__: "ok"; ok: null } | { __kind__: "err"; err: string }>;
+    updateEmployeePassword(mobile: string, password: string): Promise<{ __kind__: "ok"; ok: null } | { __kind__: "err"; err: string }>;
+    updateEmployeeShift(mobile: string, shiftStart: string, shiftEnd: string): Promise<{ __kind__: "ok"; ok: null } | { __kind__: "err"; err: string }>;
+    addEmployeeV2(emp: EmployeeV2): Promise<{ __kind__: "ok"; ok: null } | { __kind__: "err"; err: string }>;
 }
 import type { AttendanceInput as _AttendanceInput, AttendanceRecord as _AttendanceRecord, LogType as _LogType, OfficeLocation as _OfficeLocation, Time as _Time } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
@@ -359,6 +373,34 @@ export class Backend implements backendInterface {
             const result = await this.actor.updateAttendance(arg0, to_candid_AttendanceInput_n1(this._uploadFile, this._downloadFile, arg1));
             return from_candid_variant_n7(this._uploadFile, this._downloadFile, result);
         }
+    }
+    async loginEmployee(arg0: string, arg1: string): Promise<{ __kind__: "ok"; ok: EmployeeV2 } | { __kind__: "err"; err: string }> {
+        const result = await (this.actor as any).loginEmployee(arg0, arg1);
+        if ("ok" in result) return { __kind__: "ok", ok: result.ok };
+        return { __kind__: "err", err: result.err };
+    }
+    async getEmployeeShift(arg0: string): Promise<{ shiftStart: string; shiftEnd: string } | null> {
+        const result = await (this.actor as any).getEmployeeShift(arg0);
+        return result.length === 0 ? null : result[0];
+    }
+    async getEmployeesV2(): Promise<Array<EmployeeV2>> {
+        return await (this.actor as any).getEmployeesV2();
+    }
+    async updateEmployee(arg0: string, arg1: string): Promise<{ __kind__: "ok"; ok: null } | { __kind__: "err"; err: string }> {
+        const result = await (this.actor as any).updateEmployee(arg0, arg1);
+        return from_candid_variant_n7(this._uploadFile, this._downloadFile, result);
+    }
+    async updateEmployeePassword(arg0: string, arg1: string): Promise<{ __kind__: "ok"; ok: null } | { __kind__: "err"; err: string }> {
+        const result = await (this.actor as any).updateEmployeePassword(arg0, arg1);
+        return from_candid_variant_n7(this._uploadFile, this._downloadFile, result);
+    }
+    async updateEmployeeShift(arg0: string, arg1: string, arg2: string): Promise<{ __kind__: "ok"; ok: null } | { __kind__: "err"; err: string }> {
+        const result = await (this.actor as any).updateEmployeeShift(arg0, arg1, arg2);
+        return from_candid_variant_n7(this._uploadFile, this._downloadFile, result);
+    }
+    async addEmployeeV2(arg0: EmployeeV2): Promise<{ __kind__: "ok"; ok: null } | { __kind__: "err"; err: string }> {
+        const result = await (this.actor as any).addEmployeeV2(arg0);
+        return from_candid_variant_n7(this._uploadFile, this._downloadFile, result);
     }
 }
 function from_candid_AttendanceRecord_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _AttendanceRecord): AttendanceRecord {

@@ -51,7 +51,7 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { LogType } from "../backend";
-import type { AttendanceRecord, Employee } from "../backend";
+import type { AttendanceRecord, Employee, EmployeeV2 } from "../backend";
 import StatusBadge from "../components/StatusBadge";
 import { getBackend } from "../lib/getBackend";
 
@@ -106,7 +106,7 @@ export default function AdminPanel({
   const [pwInput, setPwInput] = useState("");
   const [pwError, setPwError] = useState("");
 
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<EmployeeV2[]>([]);
   const [empLoading, setEmpLoading] = useState(false);
   const [newName, setNewName] = useState("");
   const [newMobile, setNewMobile] = useState("");
@@ -149,7 +149,7 @@ export default function AdminPanel({
     getBackend()
       .then(async (b) => {
         const [emps, loc, url] = await Promise.all([
-          b.getEmployees(),
+          b.getEmployeesV2(),
           b.getOfficeLocation(),
           b.getAppsScriptUrl(),
         ]);
@@ -157,8 +157,8 @@ export default function AdminPanel({
         const edits: Record<string, { start: string; end: string }> = {};
         for (const emp of emps) {
           edits[emp.mobile] = {
-            start: (emp as any).shiftStart || "10:30",
-            end: (emp as any).shiftEnd || "20:00",
+            start: emp.shiftStart || "10:30",
+            end: emp.shiftEnd || "20:00",
           };
         }
         setShiftEdits(edits);
@@ -197,9 +197,7 @@ export default function AdminPanel({
     try {
       const b = await getBackend();
       // Try updateEmployeeShift if available (new backend), else fall through
-      if (typeof (b as any).updateEmployeeShift === "function") {
-        await (b as any).updateEmployeeShift(mobile, edit.start, edit.end);
-      }
+      await b.updateEmployeeShift(mobile, edit.start, edit.end);
       toast.success("Shift saved");
     } catch {
       toast.error("Failed to save shift");
@@ -230,27 +228,18 @@ export default function AdminPanel({
     setEmpLoading(true);
     try {
       const b = await getBackend();
-      let res: { __kind__: string; err?: string };
-      // Try addEmployeeV2 if available (new backend), else fall back to addEmployee
-      if (typeof (b as any).addEmployeeV2 === "function") {
-        res = await (b as any).addEmployeeV2({
-          name: newName.trim(),
-          mobile: newMobile.trim(),
-          password: newPassword,
-          shiftStart: newShiftStart,
-          shiftEnd: newShiftEnd,
-        });
-      } else {
-        res = await b.addEmployee({
-          name: newName.trim(),
-          mobile: newMobile.trim(),
-        });
-      }
+      const res = await b.addEmployeeV2({
+        name: newName.trim(),
+        mobile: newMobile.trim(),
+        password: newPassword,
+        shiftStart: newShiftStart,
+        shiftEnd: newShiftEnd,
+      });
       if (res.__kind__ === "err") {
         toast.error(res.err || "Failed to add employee");
         return;
       }
-      const emps = await b.getEmployees();
+      const emps = await b.getEmployeesV2();
       setEmployees(emps);
       setShiftEdits((prev) => ({
         ...prev,

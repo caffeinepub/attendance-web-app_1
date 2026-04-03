@@ -29,21 +29,37 @@ export const idlFactory = ({ IDL }) => {
     'locationType' : IDL.Text,
   });
   const Employee = IDL.Record({ 'name' : IDL.Text, 'mobile' : IDL.Text });
+  const EmployeeV2 = IDL.Record({
+    'name' : IDL.Text,
+    'mobile' : IDL.Text,
+    'password' : IDL.Text,
+    'shiftStart' : IDL.Text,
+    'shiftEnd' : IDL.Text,
+  });
   const OfficeLocation = IDL.Record({ 'lat' : IDL.Float64, 'lng' : IDL.Float64 });
   const Result = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
+  const LoginResult = IDL.Variant({ 'ok' : EmployeeV2, 'err' : IDL.Text });
+  const ShiftResult = IDL.Opt(IDL.Record({ 'shiftStart' : IDL.Text, 'shiftEnd' : IDL.Text }));
   return IDL.Service({
     'addAttendance' : IDL.Func([AttendanceInput], [IDL.Nat], []),
     'addEmployee' : IDL.Func([Employee], [Result], []),
+    'addEmployeeV2' : IDL.Func([EmployeeV2], [Result], []),
     'deleteAttendance' : IDL.Func([IDL.Nat], [Result], []),
     'deleteEmployee' : IDL.Func([IDL.Text], [Result], []),
     'getAppsScriptUrl' : IDL.Func([], [IDL.Text], ['query']),
     'getAttendance' : IDL.Func([], [IDL.Vec(AttendanceRecord)], ['query']),
     'getAttendanceByMobile' : IDL.Func([IDL.Text], [IDL.Vec(AttendanceRecord)], ['query']),
     'getEmployees' : IDL.Func([], [IDL.Vec(Employee)], ['query']),
+    'getEmployeesV2' : IDL.Func([], [IDL.Vec(EmployeeV2)], ['query']),
+    'getEmployeeShift' : IDL.Func([IDL.Text], [ShiftResult], ['query']),
     'getOfficeLocation' : IDL.Func([], [IDL.Opt(OfficeLocation)], ['query']),
+    'loginEmployee' : IDL.Func([IDL.Text, IDL.Text], [LoginResult], []),
     'setAppsScriptUrl' : IDL.Func([IDL.Text], [], []),
     'setOfficeLocation' : IDL.Func([OfficeLocation], [], []),
     'updateAttendance' : IDL.Func([IDL.Nat, AttendanceInput], [Result], []),
+    'updateEmployee' : IDL.Func([IDL.Text, IDL.Text], [Result], []),
+    'updateEmployeePassword' : IDL.Func([IDL.Text, IDL.Text], [Result], []),
+    'updateEmployeeShift' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [Result], []),
   });
 };
 export const idlInitArgs = [];

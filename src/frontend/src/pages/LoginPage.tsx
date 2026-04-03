@@ -4,7 +4,6 @@ import { Label } from "@/components/ui/label";
 import { Clock, Eye, EyeOff, Loader2, LogIn } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { Employee } from "../backend";
 import { getBackend } from "../lib/getBackend";
 
 const ADMIN_MOBILE = "9999999999";
@@ -58,31 +57,25 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         return;
       }
 
-      // Employee login check
+      // Employee login — use loginEmployee which checks password and returns shift times
       const b = await getBackend();
-      const employees: Employee[] = await b.getEmployees();
-      const found = employees.find((emp) => emp.mobile === mobile.trim());
-      if (!found) {
-        toast.error("Employee not found. Please contact your administrator.");
+      const result = await b.loginEmployee(mobile.trim(), password);
+
+      if ("err" in result) {
+        toast.error(result.err);
         return;
       }
 
-      // Check password if employee has one set
-      const empPassword = (found as any).password;
-      if (empPassword && empPassword !== password) {
-        toast.error("Incorrect password");
-        return;
-      }
-
+      const emp = result.ok;
       const session: EmpSession = {
-        name: found.name,
-        mobile: found.mobile,
-        shiftStart: (found as any).shiftStart || "10:30",
-        shiftEnd: (found as any).shiftEnd || "20:00",
+        name: emp.name,
+        mobile: emp.mobile,
+        shiftStart: emp.shiftStart || "10:30",
+        shiftEnd: emp.shiftEnd || "20:00",
         isAdmin: false,
       };
       onLogin(session);
-      toast.success(`Welcome, ${found.name}!`);
+      toast.success(`Welcome, ${emp.name}!`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error(`Login failed: ${msg.slice(0, 80)}`);

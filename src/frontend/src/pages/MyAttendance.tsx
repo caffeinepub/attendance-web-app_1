@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -10,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ClipboardList, Loader2, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AttendanceRecord } from "../backend";
 import StatusBadge from "../components/StatusBadge";
@@ -21,6 +22,31 @@ interface AttendanceRecordExt extends AttendanceRecord {
   locationLat: number;
   locationLng: number;
   locationType: string;
+}
+
+function getDefaultDateRange() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+  return {
+    from: `${year}-${month}-01`,
+    to: `${year}-${month}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+function parseDateStr(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  if (dateStr.includes("-")) {
+    const parts = dateStr.split("-");
+    if (parts[0].length === 4) {
+      // yyyy-mm-dd
+      return new Date(`${parts[0]}-${parts[1]}-${parts[2]}`);
+    }
+    // dd-mm-yyyy
+    return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+  }
+  return null;
 }
 
 function formatTs(ts: bigint): string {
@@ -57,29 +83,59 @@ function ReverseGeoCell({ lat, lng }: { lat: number; lng: number }) {
   return <span>{label || "—"}</span>;
 }
 
-export default function MyAttendance() {
-  const [mobile, setMobile] = useState("");
+interface MyAttendanceProps {
+  mobile?: string;
+}
+
+export default function MyAttendance({
+  mobile: mobileProp,
+}: MyAttendanceProps) {
+  const defaultRange = getDefaultDateRange();
+  const [dateFrom, setDateFrom] = useState(defaultRange.from);
+  const [dateTo, setDateTo] = useState(defaultRange.to);
   const [records, setRecords] = useState<AttendanceRecordExt[] | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function search() {
+  const mobile = mobileProp ?? "";
+
+  async function fetchRecords(fromDate: string, toDate: string) {
     if (!mobile.trim()) {
-      toast.error("Enter a mobile number");
+      toast.error("No employee session found. Please log in again.");
+      return;
+    }
+    if (!fromDate || !toDate) {
+      toast.error("Please select both from and to dates");
       return;
     }
     setLoading(true);
     try {
       const b = await getBackend();
       const recs = await b.getAttendanceByMobile(mobile.trim());
-      setRecords(recs as AttendanceRecordExt[]);
-      if (recs.length === 0)
-        toast.info("No records found for this mobile number");
+      const from = parseDateStr(fromDate);
+      const to = parseDateStr(toDate);
+      const filtered = (recs as AttendanceRecordExt[]).filter((r) => {
+        const recDate = parseDateStr(r.date);
+        if (!recDate || !from || !to) return true;
+        return recDate >= from && recDate <= to;
+      });
+      setRecords(filtered);
+      if (filtered.length === 0)
+        toast.info("No records found for the selected date range");
     } catch {
       toast.error("Failed to fetch records");
     } finally {
       setLoading(false);
     }
   }
+
+  // Auto-fetch on mount with default range
+  const didMount = useRef(false);
+  useEffect(() => {
+    if (!didMount.current && mobile) {
+      didMount.current = true;
+      fetchRecords(defaultRange.from, defaultRange.to);
+    }
+  });
 
   const summary = records
     ? {
@@ -110,40 +166,50 @@ export default function MyAttendance() {
         </p>
       </div>
 
-      {/* Identity verification card */}
+      {/* Date range filter card */}
       <Card className="overflow-hidden">
         <CardContent className="pt-6 pb-6">
           <div className="relative">
-            {/* Decorative background icon */}
             <div className="absolute right-0 top-1/2 -translate-y-1/2 opacity-5 pointer-events-none">
               <ClipboardList className="w-32 h-32 text-foreground" />
             </div>
             <div className="relative">
               <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">
-                Identity Verification
+                Date Range Filter
               </p>
-              <div className="flex gap-3 items-center">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <div className="flex flex-col sm:flex-row gap-3 items-end">
+                <div className="flex-1">
+                  <Label className="text-xs text-muted-foreground mb-1 block">
+                    From
+                  </Label>
                   <Input
-                    data-ocid="my.search_input"
-                    placeholder="Enter registered mobile number..."
-                    value={mobile}
-                    onChange={(e) => setMobile(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && search()}
-                    className="pl-9"
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1">
+                  <Label className="text-xs text-muted-foreground mb-1 block">
+                    To
+                  </Label>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
                   />
                 </div>
                 <Button
                   data-ocid="my.fetch_button"
-                  onClick={search}
+                  onClick={() => fetchRecords(dateFrom, dateTo)}
                   disabled={loading}
                   className="bg-blue-600 hover:bg-blue-700 text-white shrink-0"
                 >
                   {loading ? (
                     <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-                  ) : null}
-                  Fetch Record
+                  ) : (
+                    <Search className="w-4 h-4 mr-1.5" />
+                  )}
+                  Fetch Records
                 </Button>
               </div>
             </div>

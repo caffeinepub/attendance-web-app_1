@@ -111,12 +111,24 @@ export default function MarkAttendance({
   const [userLng, setUserLng] = useState<number | null>(null);
   const [locationConfigured, setLocationConfigured] = useState(false);
 
-  const shiftStart = loggedInEmployee.shiftStart || "10:30";
-  const shiftEnd = loggedInEmployee.shiftEnd || "20:00";
+  // Shift times — start with session values, then refresh from backend
+  const [shiftStart, setShiftStart] = useState(
+    loggedInEmployee.shiftStart || "10:30",
+  );
+  const [shiftEnd, setShiftEnd] = useState(
+    loggedInEmployee.shiftEnd || "20:00",
+  );
 
   useEffect(() => {
     getBackend()
       .then(async (b) => {
+        // Fetch live shift time from backend to ensure accuracy across all devices
+        const shiftResult = await b.getEmployeeShift(loggedInEmployee.mobile);
+        if (shiftResult) {
+          setShiftStart(shiftResult.shiftStart || "10:30");
+          setShiftEnd(shiftResult.shiftEnd || "20:00");
+        }
+        // Also fetch office location status
         const loc = await b.getOfficeLocation();
         setLocationConfigured(!!loc);
       })
@@ -131,7 +143,7 @@ export default function MarkAttendance({
         setGeoLoading(false);
       },
     );
-  }, []);
+  }, [loggedInEmployee.mobile]);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -366,7 +378,7 @@ export default function MarkAttendance({
             )}
           </div>
 
-          {/* Shift time */}
+          {/* Shift time — fetched live from backend */}
           <div className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
             <Clock className="w-4 h-4 shrink-0" />
             <span>

@@ -36,6 +36,13 @@ export interface AttendanceRecord {
   'locationType' : string,
 }
 export interface Employee { 'name' : string, 'mobile' : string }
+export interface EmployeeV2 {
+  'name' : string,
+  'mobile' : string,
+  'password' : string,
+  'shiftStart' : string,
+  'shiftEnd' : string,
+}
 export type LogType = { 'exit' : null } |
   { 'entry' : null };
 export interface OfficeLocation { 'lat' : number, 'lng' : number }
@@ -43,28 +50,23 @@ export type Time = bigint;
 export interface _SERVICE {
   'addAttendance' : ActorMethod<[AttendanceInput], bigint>,
   'addEmployee' : ActorMethod<[Employee], { 'ok' : null } | { 'err' : string }>,
-  'deleteAttendance' : ActorMethod<
-    [bigint],
-    { 'ok' : null } |
-      { 'err' : string }
-  >,
-  'deleteEmployee' : ActorMethod<
-    [string],
-    { 'ok' : null } |
-      { 'err' : string }
-  >,
+  'addEmployeeV2' : ActorMethod<[EmployeeV2], { 'ok' : null } | { 'err' : string }>,
+  'deleteAttendance' : ActorMethod<[bigint], { 'ok' : null } | { 'err' : string }>,
+  'deleteEmployee' : ActorMethod<[string], { 'ok' : null } | { 'err' : string }>,
   'getAppsScriptUrl' : ActorMethod<[], string>,
   'getAttendance' : ActorMethod<[], Array<AttendanceRecord>>,
   'getAttendanceByMobile' : ActorMethod<[string], Array<AttendanceRecord>>,
   'getEmployees' : ActorMethod<[], Array<Employee>>,
+  'getEmployeesV2' : ActorMethod<[], Array<EmployeeV2>>,
+  'getEmployeeShift' : ActorMethod<[string], [] | [{ 'shiftStart' : string, 'shiftEnd' : string }]>,
   'getOfficeLocation' : ActorMethod<[], [] | [OfficeLocation]>,
+  'loginEmployee' : ActorMethod<[string, string], { 'ok' : EmployeeV2 } | { 'err' : string }>,
   'setAppsScriptUrl' : ActorMethod<[string], undefined>,
   'setOfficeLocation' : ActorMethod<[OfficeLocation], undefined>,
-  'updateAttendance' : ActorMethod<
-    [bigint, AttendanceInput],
-    { 'ok' : null } |
-      { 'err' : string }
-  >,
+  'updateAttendance' : ActorMethod<[bigint, AttendanceInput], { 'ok' : null } | { 'err' : string }>,
+  'updateEmployee' : ActorMethod<[string, string], { 'ok' : null } | { 'err' : string }>,
+  'updateEmployeePassword' : ActorMethod<[string, string], { 'ok' : null } | { 'err' : string }>,
+  'updateEmployeeShift' : ActorMethod<[string, string, string], { 'ok' : null } | { 'err' : string }>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

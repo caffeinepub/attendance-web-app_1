@@ -59,7 +59,7 @@ export default function App() {
       case "dashboard":
         return <Dashboard />;
       case "my":
-        return <MyAttendance />;
+        return <MyAttendance mobile={empSession.mobile} />;
       case "admin":
         return <AdminPanel isAdminSession={empSession.isAdmin} />;
       case "admin-dashboard":

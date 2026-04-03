@@ -55,24 +55,45 @@ function haversineDistance(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function getEntryStatus(shiftStart: string): string {
+/**
+ * Entry punctuality:
+ * - "On Time"      : arrived within 15-min grace period after shift start
+ * - "Came Late"    : late but less than 33% into shift
+ * - "Late Came/HD" : more than 33% into shift (Half Day)
+ */
+function getEntryStatus(shiftStart: string, shiftEnd: string): string {
   const [sh, sm] = shiftStart.split(":").map(Number);
-  const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
-  const shiftStartMins = sh * 60 + sm;
-  if (mins < shiftStartMins) return "Early Entry";
-  if (mins <= shiftStartMins + 15) return "On Time";
-  return "Half Day";
-}
-
-function getExitStatus(shiftEnd: string): string {
   const [eh, em] = shiftEnd.split(":").map(Number);
   const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
-  const shiftEndMins = eh * 60 + em;
-  if (mins < shiftEndMins) return "Early Exit";
-  if (mins <= shiftEndMins + 15) return "On Time Exit";
-  return "Late Exit";
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const startMins = sh * 60 + sm;
+  const endMins = eh * 60 + em;
+  const shiftDuration = endMins - startMins;
+  const threshold33 = startMins + Math.floor(shiftDuration * 0.33);
+  if (nowMins <= startMins + 15) return "On Time";
+  if (nowMins < threshold33) return "Came Late";
+  return "Late Came/HD";
+}
+
+/**
+ * Exit punctuality:
+ * - "Early Go/HD" : left more than 33% before shift end (Half Day)
+ * - "On Time"     : exited within 15 minutes after shift end
+ * - "Go Late"     : stayed more than 15 minutes past shift end
+ */
+function getExitStatus(shiftStart: string, shiftEnd: string): string {
+  const [sh, sm] = shiftStart.split(":").map(Number);
+  const [eh, em] = shiftEnd.split(":").map(Number);
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const startMins = sh * 60 + sm;
+  const endMins = eh * 60 + em;
+  const shiftDuration = endMins - startMins;
+  const earlyThreshold = endMins - Math.floor(shiftDuration * 0.33);
+  void startMins;
+  if (nowMins < earlyThreshold) return "Early Go/HD";
+  if (nowMins <= endMins + 15) return "On Time";
+  return "Go Late";
 }
 
 function formatTime(t: string) {
@@ -80,6 +101,29 @@ function formatTime(t: string) {
   const ampm = h >= 12 ? "PM" : "AM";
   const hour = h % 12 || 12;
   return `${hour}:${m.toString().padStart(2, "0")} ${ampm}`;
+}
+
+/** Calculate expected working hours (shift duration) as a formatted string */
+function calcExpWh(shiftStart: string, shiftEnd: string): string {
+  const [sh, sm] = shiftStart.split(":").map(Number);
+  const [eh, em] = shiftEnd.split(":").map(Number);
+  const totalMins = eh * 60 + em - (sh * 60 + sm);
+  if (totalMins <= 0) return "";
+  const hrs = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+}
+
+/** Calculate actual working hours between entry and exit timestamps */
+function calcActWh(entryTs: bigint, exitTs: bigint): string {
+  if (!entryTs || entryTs === BigInt(0) || !exitTs || exitTs === BigInt(0))
+    return "";
+  const diffMs = Number(exitTs) - Number(entryTs);
+  if (diffMs <= 0) return "";
+  const totalMins = Math.floor(diffMs / 60000);
+  const hrs = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
 }
 
 function useClock() {
@@ -111,7 +155,6 @@ export default function MarkAttendance({
   const [userLng, setUserLng] = useState<number | null>(null);
   const [locationConfigured, setLocationConfigured] = useState(false);
 
-  // Shift times — start with session values, then refresh from backend
   const [shiftStart, setShiftStart] = useState(
     loggedInEmployee.shiftStart || "10:30",
   );
@@ -122,13 +165,11 @@ export default function MarkAttendance({
   useEffect(() => {
     getBackend()
       .then(async (b) => {
-        // Fetch live shift time from backend to ensure accuracy across all devices
         const shiftResult = await b.getEmployeeShift(loggedInEmployee.mobile);
         if (shiftResult) {
           setShiftStart(shiftResult.shiftStart || "10:30");
           setShiftEnd(shiftResult.shiftEnd || "20:00");
         }
-        // Also fetch office location status
         const loc = await b.getOfficeLocation();
         setLocationConfigured(!!loc);
       })
@@ -174,24 +215,22 @@ export default function MarkAttendance({
       const todayRecords = existing.filter((r) => r.date === today);
 
       if (isWeekOff) {
-        // Block duplicate Week Off
-        const alreadyWeekOff = todayRecords.find(
-          (r) => r.status === "Week Off",
+        const dupWO = todayRecords.find(
+          (r) => (r.status as string) === "Week Off",
         );
-        if (alreadyWeekOff) {
-          toast.error("Week Off already marked for today.");
+        if (dupWO) {
+          toast.error("Week Off already marked for today");
           return;
         }
       } else {
-        // Block duplicate Entry or Exit
-        const normalizedLogType = logType === "entry" ? "entry" : "exit";
-        const dup = todayRecords.find((r) => {
-          const rt = String(r.logType).toLowerCase();
-          return rt === normalizedLogType && r.status !== "Week Off";
-        });
+        const dup = todayRecords.find(
+          (r) => String(r.logType) === logType || r.logType === logType,
+        );
         if (dup) {
           toast.error(
-            `${logType === "entry" ? "Entry" : "Exit"} already marked for today.`,
+            logType === "entry"
+              ? "Entry already marked for today"
+              : "Exit already marked for today",
           );
           return;
         }
@@ -232,11 +271,15 @@ export default function MarkAttendance({
       }
 
       const ts = BigInt(Date.now());
-      const status: string = isWeekOff
-        ? "Week Off"
-        : logType === "exit"
-          ? getExitStatus(shiftEnd)
-          : getEntryStatus(shiftStart);
+
+      let status: string;
+      if (isWeekOff) {
+        status = "Week Off";
+      } else if (logType === "exit") {
+        status = getExitStatus(shiftStart, shiftEnd);
+      } else {
+        status = getEntryStatus(shiftStart, shiftEnd);
+      }
 
       const lt: LogType = isWeekOff
         ? LogType.entry
@@ -280,6 +323,11 @@ export default function MarkAttendance({
             } else if (!isWeekOff) {
               geoLocation = "0.000000, 0.000000";
             }
+
+            const expWh = calcExpWh(shiftStart, shiftEnd);
+            const actWh =
+              lt === LogType.exit ? calcActWh(input.entryTimestamp, ts) : "";
+
             fetch(url, {
               method: "POST",
               mode: "no-cors" as RequestMode,
@@ -294,6 +342,8 @@ export default function MarkAttendance({
                 exitTimestamp: fmtTsStr(input.exitTimestamp),
                 workLocation,
                 geoLocation,
+                expWh,
+                actWh,
               }),
             }).catch(() => {});
           }
@@ -314,7 +364,6 @@ export default function MarkAttendance({
 
   return (
     <div className="max-w-lg mx-auto">
-      {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">
@@ -336,7 +385,6 @@ export default function MarkAttendance({
         </div>
       </div>
 
-      {/* Clock card */}
       <div className="rounded-xl bg-blue-50 border border-blue-100 px-6 py-8 text-center mb-4">
         <div className="text-5xl font-bold text-blue-600 tracking-tight tabular-nums">
           {timeStr}
@@ -346,10 +394,8 @@ export default function MarkAttendance({
         </div>
       </div>
 
-      {/* Form card */}
       <Card>
         <CardContent className="pt-5 space-y-4">
-          {/* Logged-in employee display */}
           <div className="flex items-center gap-3 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg">
             <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
               <User className="w-4 h-4 text-white" />
@@ -367,7 +413,6 @@ export default function MarkAttendance({
             </span>
           </div>
 
-          {/* Work Location dropdown */}
           <div className="space-y-1.5">
             <Label>Work Location</Label>
             <Select
@@ -392,7 +437,6 @@ export default function MarkAttendance({
             )}
           </div>
 
-          {/* Shift time — fetched live from backend */}
           <div className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
             <Clock className="w-4 h-4 shrink-0" />
             <span>
@@ -401,7 +445,6 @@ export default function MarkAttendance({
             </span>
           </div>
 
-          {/* Log type toggle */}
           <div className="space-y-1.5">
             <Label>Log Type</Label>
             <div className="grid grid-cols-2 gap-3">
@@ -434,7 +477,6 @@ export default function MarkAttendance({
             </div>
           </div>
 
-          {/* Confirm Entry/Exit button */}
           <Button
             data-ocid="mark.submit_button"
             className="w-full bg-blue-600 hover:bg-blue-700 text-white"
@@ -445,7 +487,6 @@ export default function MarkAttendance({
             Confirm {logType === "entry" ? "Entry" : "Exit"}
           </Button>
 
-          {/* Mark Week Off button — always on its own row to prevent accidental taps */}
           <Button
             data-ocid="mark.weekoff.button"
             variant="outline"

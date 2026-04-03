@@ -22,6 +22,8 @@ interface AttendanceRecordExt extends AttendanceRecord {
   locationLat: number;
   locationLng: number;
   locationType: string;
+  expWh?: string;
+  actWh?: string;
 }
 
 function getDefaultDateRange() {
@@ -50,7 +52,7 @@ function parseDateStr(dateStr: string): Date | null {
 }
 
 function formatTs(ts: bigint): string {
-  if (!ts || ts === BigInt(0)) return "—";
+  if (!ts || ts === BigInt(0)) return "\u2014";
   const d = new Date(Number(ts));
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -80,7 +82,7 @@ function ReverseGeoCell({ lat, lng }: { lat: number; lng: number }) {
       cancelled = true;
     };
   }, [lat, lng]);
-  return <span>{label || "—"}</span>;
+  return <span>{label || "\u2014"}</span>;
 }
 
 interface MyAttendanceProps {
@@ -302,6 +304,8 @@ export default function MyAttendance({
                         Entry Time
                       </TableHead>
                       <TableHead className="font-semibold">Exit Time</TableHead>
+                      <TableHead className="font-semibold">EXP WH</TableHead>
+                      <TableHead className="font-semibold">ACT WH</TableHead>
                       <TableHead className="font-semibold">
                         Work Location
                       </TableHead>
@@ -331,7 +335,13 @@ export default function MyAttendance({
                           {formatTs(r.exitTimestamp)}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {r.locationType || "—"}
+                          {r.expWh || "\u2014"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {r.actWh || "\u2014"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {r.locationType || "\u2014"}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground font-mono">
                           <ReverseGeoCell

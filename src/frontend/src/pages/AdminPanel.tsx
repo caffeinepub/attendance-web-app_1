@@ -70,7 +70,7 @@ export function getEmployeeShift(_mobile: string): {
 }
 
 function formatTs(ts: bigint): string {
-  if (!ts || ts === BigInt(0)) return "—";
+  if (!ts || ts === BigInt(0)) return "\u2014";
   const d = new Date(Number(ts));
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -466,7 +466,8 @@ function handleRequest(data) {
   sheet.appendRow([
     data.date, data.name, data.mobile, data.logType, data.status,
     data.entryTimestamp, data.exitTimestamp, data.shiftTiming,
-    data.workLocation, data.geoLocation
+    data.workLocation, data.geoLocation,
+    data.expWh, data.actWh
   ]);
   return ContentService.createTextOutput(JSON.stringify({ result: "success" }))
     .setMimeType(ContentService.MimeType.JSON);
@@ -606,7 +607,7 @@ function handleRequest(data) {
                                 }
                               />
                               <span className="text-muted-foreground text-xs">
-                                –
+                                \u2013
                               </span>
                               <Input
                                 type="time"
@@ -944,7 +945,7 @@ function handleRequest(data) {
               <p className="text-muted-foreground">
                 1. Open Google Sheets and go to{" "}
                 <strong className="text-foreground">
-                  Extensions → Apps Script
+                  Extensions \u2192 Apps Script
                 </strong>
                 .
               </p>
@@ -960,7 +961,8 @@ function handleRequest(data) {
                 4. Google Sheet header row:{" "}
                 <code className="bg-muted px-1 rounded text-xs">
                   Date | Name | Mobile | Log Type | Status | Entry Timestamp |
-                  Exit Timestamp | Shift Timing | Work Location | Geo Location
+                  Exit Timestamp | Shift Timing | Work Location | Geo Location |
+                  EXP WH | ACT WH
                 </code>
               </p>
             </CardContent>

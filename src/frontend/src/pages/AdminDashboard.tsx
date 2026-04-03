@@ -47,10 +47,12 @@ interface AttendanceRecordExt extends AttendanceRecord {
   locationLat: number;
   locationLng: number;
   locationType: string;
+  expWh?: string;
+  actWh?: string;
 }
 
 function formatTs(ts: bigint): string {
-  if (!ts || ts === BigInt(0)) return "—";
+  if (!ts || ts === BigInt(0)) return "\u2014";
   const d = new Date(Number(ts));
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -80,7 +82,7 @@ function ReverseGeoCell({ lat, lng }: { lat: number; lng: number }) {
       cancelled = true;
     };
   }, [lat, lng]);
-  return <span>{label || "—"}</span>;
+  return <span>{label || "\u2014"}</span>;
 }
 
 export default function AdminDashboard() {
@@ -190,14 +192,15 @@ export default function AdminDashboard() {
     );
   });
 
+  // Status options aligned with new punctuality logic
   const statusOptions = [
-    "Early Entry",
     "On Time",
-    "On Time Exit",
-    "Half Day",
-    "Late Exit",
-    "Absent",
+    "Came Late",
+    "Late Came/HD",
+    "Early Go/HD",
+    "Go Late",
     "Week Off",
+    "Absent",
   ];
 
   return (
@@ -264,9 +267,12 @@ export default function AdminDashboard() {
                     <TableHead className="font-semibold">Mobile</TableHead>
                     <TableHead className="font-semibold">Date</TableHead>
                     <TableHead className="font-semibold">Log Type</TableHead>
+                    <TableHead className="font-semibold">Attendance</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold">Entry Time</TableHead>
                     <TableHead className="font-semibold">Exit Time</TableHead>
+                    <TableHead className="font-semibold">EXP WH</TableHead>
+                    <TableHead className="font-semibold">ACT WH</TableHead>
                     <TableHead className="font-semibold">
                       Work Location
                     </TableHead>
@@ -294,6 +300,9 @@ export default function AdminDashboard() {
                       <TableCell>
                         <StatusBadge status={r.status as string} />
                       </TableCell>
+                      <TableCell>
+                        <StatusBadge status={r.status as string} />
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {formatTs(r.entryTimestamp)}
                       </TableCell>
@@ -301,7 +310,13 @@ export default function AdminDashboard() {
                         {formatTs(r.exitTimestamp)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {r.locationType || "—"}
+                        {r.expWh || "\u2014"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {r.actWh || "\u2014"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {r.locationType || "\u2014"}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground font-mono">
                         <ReverseGeoCell

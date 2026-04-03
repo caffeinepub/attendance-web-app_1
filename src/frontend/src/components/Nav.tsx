@@ -13,11 +13,18 @@ import { useState } from "react";
 import type { Page } from "../App";
 import type { EmpSession } from "../pages/LoginPage";
 
-const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
+const allNavItems: {
+  id: Page;
+  label: string;
+  icon: React.ReactNode;
+  adminOnly?: boolean;
+  hideForAdmin?: boolean;
+}[] = [
   {
     id: "mark",
     label: "Mark Attendance",
     icon: <ClipboardList className="w-4 h-4 shrink-0" />,
+    hideForAdmin: true,
   },
   {
     id: "dashboard",
@@ -33,6 +40,7 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
     id: "admin",
     label: "Admin Panel",
     icon: <Settings className="w-4 h-4 shrink-0" />,
+    adminOnly: true,
   },
 ];
 
@@ -67,6 +75,13 @@ function SidebarContent({
   loggedInEmployee,
   onLogout,
 }: NavProps & { onClose?: () => void }) {
+  const isAdmin = loggedInEmployee?.isAdmin ?? false;
+  const navItems = allNavItems.filter((item) => {
+    if (item.hideForAdmin && isAdmin) return false;
+    if (item.adminOnly && !isAdmin) return false;
+    return true;
+  });
+
   return (
     <div
       className="flex flex-col h-full"

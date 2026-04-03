@@ -11,7 +11,7 @@ import MyAttendance from "./pages/MyAttendance";
 export type Page = "mark" | "dashboard" | "my" | "admin" | "admin-dashboard";
 
 export default function App() {
-  const [page, setPage] = useState<Page>("mark");
+  const [page, setPage] = useState<Page>("dashboard");
   const [empSession, setEmpSession] = useState<EmpSession | null>(() => {
     const s = sessionStorage.getItem("emp_session");
     return s ? (JSON.parse(s) as EmpSession) : null;
@@ -20,15 +20,18 @@ export default function App() {
   function handleLogin(emp: EmpSession) {
     sessionStorage.setItem("emp_session", JSON.stringify(emp));
     setEmpSession(emp);
-    // Redirect admin directly to Admin Panel
+    // Admin goes to Dashboard first; employees go to Mark Attendance
     if (emp.isAdmin) {
-      setPage("admin");
+      setPage("dashboard");
+    } else {
+      setPage("mark");
     }
   }
 
   function handleLogout() {
     sessionStorage.removeItem("emp_session");
     setEmpSession(null);
+    setPage("dashboard");
   }
 
   if (!empSession) {
@@ -43,6 +46,10 @@ export default function App() {
   const renderPage = () => {
     switch (page) {
       case "mark":
+        // Prevent admin from accessing Mark Attendance
+        if (empSession.isAdmin) {
+          return <Dashboard />;
+        }
         return (
           <MarkAttendance
             loggedInEmployee={empSession}
